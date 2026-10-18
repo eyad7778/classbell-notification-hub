@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { usePreferences } from "@/hooks/use-preferences";
 import { getPushConfig, savePushSubscription } from "@/lib/push.functions";
-import { getActivePushRegistration } from "@/lib/push-client";
+import { getActivePushRegistration, subscribeWithKey } from "@/lib/push-client";
 
 type PermissionState = NotificationPermission | "unsupported";
 
@@ -94,6 +94,9 @@ export function StudentOnboarding({ userId }: { userId: string | null }) {
       if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
         throw new Error("This browser does not support device push notifications.");
       }
+      if (!("Notification" in window)) {
+        throw new Error("On iPhone, add the site to the Home Screen first, then open it from there.");
+      }
       const granted = Notification.permission === "granted"
         ? "granted"
         : await Notification.requestPermission();
@@ -105,16 +108,7 @@ export function StudentOnboarding({ userId }: { userId: string | null }) {
       const config = await getConfig();
       if (!config.publicKey) throw new Error("Web Push is not configured on the server yet.");
       const registration = await getActivePushRegistration();
-      const existing = await registration.pushManager.getSubscription();
-      const publicKey = config.publicKey.replace(/-/g, "+").replace(/_/g, "/");
-      const applicationServerKey = Uint8Array.from(
-        atob(publicKey.padEnd(Math.ceil(publicKey.length / 4) * 4, "=")),
-        (character) => character.charCodeAt(0),
-      );
-      const subscription = existing ?? await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey,
-      });
+      const subscription = await subscribeWithKey(registration, config.publicKey);
       const json = subscription.toJSON();
       if (!json.keys?.["p256dh"] || !json.keys["auth"]) throw new Error("Could not read the browser push keys.");
       await saveSubscription({ data: {

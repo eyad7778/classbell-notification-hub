@@ -63,3 +63,17 @@ describe("push worker activation", () => {
     await rejected;
   });
 });
+describe("push subscription key", () => {
+  it("replaces a subscription made with an old server key", async () => {
+    const { subscribeWithKey } = await import("@/lib/push-client");
+    const unsubscribe = vi.fn().mockResolvedValue(true);
+    const subscribe = vi.fn().mockResolvedValue({ endpoint: "new" });
+    const registration = { pushManager: {
+      getSubscription: vi.fn().mockResolvedValue({ options: { applicationServerKey: new Uint8Array([9, 9]).buffer }, unsubscribe }),
+      subscribe,
+    } } as unknown as ServiceWorkerRegistration;
+    const result = await subscribeWithKey(registration, "AQI");
+    expect(unsubscribe).toHaveBeenCalled();
+    expect(result).toEqual({ endpoint: "new" });
+  });
+});
