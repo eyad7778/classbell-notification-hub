@@ -9,12 +9,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { effectiveStatus, statusLabel, useMe, type SubStatus } from "@/hooks/use-me";
 import {
   resetStudentPassword,
+  reviewStudentRegistration,
   setStaffRole,
   setSubscriptionStatus,
   unlinkTelegram,
 } from "@/lib/staff.functions";
 import { Card, Empty, fmtDate, Loading, PageTitle } from "@/components/app-ui";
 import { pageMeta } from "@/lib/meta";
+import { STAFF_PERMISSIONS, type StaffPermission } from "@/lib/staff-permissions";
 
 export const Route = createFileRoute("/_authenticated/admin/students")({
   head: () => pageMeta("إدارة الطلاب", "حالات الاشتراك وربط Telegram للطلاب."),
@@ -28,9 +30,11 @@ function Students() {
   const resetPw = useServerFn(resetStudentPassword);
   const unlink = useServerFn(unlinkTelegram);
   const staffRole = useServerFn(setStaffRole);
+  const reviewRegistration = useServerFn(reviewStudentRegistration);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<string>("all");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
+  const [staffEditor, setStaffEditor] = useState<{ userId: string; name: string; permissions: StaffPermission[] } | null>(null);
   const [academic, setAcademic] = useState<Record<string, { departmentId: string; level: string }>>(
     {},
   );
@@ -42,13 +46,14 @@ function Students() {
   const q = useQuery({
     queryKey: ["admin-students"],
     queryFn: async () => {
-      const [p, s, t, r] = await Promise.all([
+      const [p, s, t, r, permissions] = await Promise.all([
         supabase.from("profiles").select("*").order("created_at", { ascending: false }).limit(1000),
         supabase.from("subscriptions").select("user_id, status, end_at"),
         supabase
           .from("telegram_links")
           .select("user_id, blocked, last_send_status, telegram_username"),
         supabase.from("user_roles").select("user_id, role"),
+        supabase.from("staff_permissions").select("user_id, permission"),
       ]);
       const sm = new Map((s.data ?? []).map((x) => [x.user_id, x]));
       const tm = new Map((t.data ?? []).map((x) => [x.user_id, x]));
@@ -58,6 +63,9 @@ function Students() {
         end_at: sm.get(x.id)?.end_at ?? null,
         tg: tm.get(x.id),
         roles: (r.data ?? []).filter((y) => y.user_id === x.id).map((y) => y.role as string),
+        permissions: (permissions.data ?? [])
+          .filter((y) => y.user_id === x.id)
+          .map((y) => y.permission as StaffPermission),
       }));
     },
   });
@@ -70,6 +78,18 @@ function Students() {
     } catch (e) {
       toast.error((e as Error).message);
     }
+  }
+
+  async function openIdCard(path: string) {
+    const popup = window.open("about:blank", "_blank");
+    if (popup) popup.opener = null;
+    const { data, error } = await supabase.storage.from("student-ids").createSignedUrl(path, 300);
+    if (error || !data) {
+      popup?.close();
+      return toast.error("تعذّر فتح صورة الكارنيه");
+    }
+    if (popup) popup.location.href = data.signedUrl;
+    else window.location.assign(data.signedUrl);
   }
 
   if (q.isLoading) return <Loading />;
@@ -155,6 +175,11 @@ function Students() {
                       : "غير مرتبط"}
                     {x.end_at && ` · ينتهي ${fmtDate(x.end_at)}`}
                   </p>
+                  {x.registration_status === "pending" && (
+                    <span className="mt-2 inline-flex rounded-full bg-warning-soft px-2.5 py-1 text-xs font-semibold text-warning">
+                      الحساب بانتظار مراجعة الكارنيه
+                    </span>
+                  )}
                 </div>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${statusLabel[x.status].cls}`}
@@ -162,6 +187,25 @@ function Students() {
                   {statusLabel[x.status].text}
                 </span>
               </div>
+              {x.registration_status === "pending" && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {x.id_card_path && (
+                    <Button size="sm" variant="outline" onClick={() => openIdCard(x.id_card_path!)}>
+                      عرض صورة الكارنيه
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    disabled={!x.id_card_path}
+                    onClick={() => run(
+                      () => reviewRegistration({ data: { userId: x.id } }),
+                      "تم تفعيل الحساب وحذف صورة الكارنيه",
+                    )}
+                  >
+                    تفعيل الحساب وحذف الصورة
+                  </Button>
+                </div>
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
                 <select
                   className="h-9 min-w-40 rounded-md border border-input bg-background px-2 text-sm"
@@ -224,7 +268,7 @@ function Students() {
                 </Button>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {x.status !== "active" && (
+                {(me.data?.isOwner || me.data?.permissions.includes("payments")) && x.status !== "active" && (
                   <Button
                     size="sm"
                     onClick={() =>
@@ -237,7 +281,7 @@ function Students() {
                     تفعيل
                   </Button>
                 )}
-                {x.status === "active" && (
+                {(me.data?.isOwner || me.data?.permissions.includes("payments")) && x.status === "active" && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -281,20 +325,63 @@ function Students() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() =>
-                      run(
-                        () =>
-                          staffRole({
-                            data: { phone: x.phone, makeStaff: !x.roles.includes("staff") },
-                          }),
-                        "تم تحديث الصلاحية",
-                      )
-                    }
+                    onClick={() => setStaffEditor({
+                      userId: x.id,
+                      name: x.full_name,
+                      permissions: x.roles.includes("staff") ? x.permissions : [],
+                    })}
                   >
-                    {x.roles.includes("staff") ? "إزالة صلاحية موظف" : "تعيين موظفًا"}
+                    {x.roles.includes("staff") ? "تعديل صلاحيات الموظف" : "تعيين موظف بصلاحيات محددة"}
                   </Button>
                 )}
               </div>
+              {staffEditor?.userId === x.id && (
+                <div className="mt-3 space-y-3 rounded-xl border bg-muted/40 p-4">
+                  <p className="text-sm font-semibold">صلاحيات {staffEditor.name}</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {STAFF_PERMISSIONS.map((permission) => (
+                      <label key={permission.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={staffEditor.permissions.includes(permission.id)}
+                          onChange={(event) => setStaffEditor((current) => current ? {
+                            ...current,
+                            permissions: event.target.checked
+                              ? [...current.permissions, permission.id]
+                              : current.permissions.filter((item) => item !== permission.id),
+                          } : current)}
+                        />
+                        {permission.label}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      disabled={staffEditor.permissions.length === 0}
+                      onClick={() => run(async () => {
+                        await staffRole({ data: { userId: x.id, makeStaff: true, permissions: staffEditor.permissions } });
+                        setStaffEditor(null);
+                      }, "تم حفظ صلاحيات الموظف")}
+                    >
+                      حفظ الصلاحيات
+                    </Button>
+                    {x.roles.includes("staff") && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => run(async () => {
+                          await staffRole({ data: { userId: x.id, makeStaff: false, permissions: [] } });
+                          setStaffEditor(null);
+                        }, "تمت إزالة صلاحيات الموظف")}
+                      >
+                        إزالة صلاحيات الموظف
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={() => setStaffEditor(null)}>إلغاء</Button>
+                  </div>
+                </div>
+              )}
             </Card>
           ))}
         </div>

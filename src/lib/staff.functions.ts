@@ -5,18 +5,24 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 type Ctx = {
   supabase: {
     rpc: (
-      fn: "is_staff" | "has_role",
+      fn: "is_staff" | "has_role" | "has_staff_permission" | "set_staff_access",
       args: Record<string, unknown>,
-    ) => PromiseLike<{ data: unknown }>;
+    ) => PromiseLike<{ data: unknown; error?: { message: string } | null }>;
   };
   userId: string;
 };
 
-async function assertStaff(ctx: Ctx, ownerOnly = false) {
-  const { data } = ownerOnly
-    ? await ctx.supabase.rpc("has_role", { _user_id: ctx.userId, _role: "owner" })
-    : await ctx.supabase.rpc("is_staff", { _user_id: ctx.userId });
-  if (!data) throw new Error("غير مصرح لك بهذا الإجراء");
+async function assertStaff(ctx: Ctx, ownerOnly = false, permission?: "students" | "payments" | "content" | "communications") {
+  const { data: isOwner } = await ctx.supabase.rpc("has_role", { _user_id: ctx.userId, _role: "owner" });
+  if (ownerOnly && !isOwner) throw new Error("غير مصرح لك بهذا الإجراء");
+  if (!isOwner) {
+    if (!permission) throw new Error("غير مصرح لك بهذا الإجراء");
+    const { data } = await ctx.supabase.rpc("has_staff_permission", {
+      _user_id: ctx.userId,
+      _permission: permission,
+    });
+    if (!data) throw new Error("غير مصرح لك بهذا الإجراء");
+  }
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return supabaseAdmin;
 }
@@ -83,7 +89,7 @@ export const reviewPayment = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const admin = await assertStaff(context as Ctx);
+    const admin = await assertStaff(context as Ctx, false, "payments");
     const { data: pr } = await admin
       .from("payment_requests")
       .select("*")
@@ -91,16 +97,22 @@ export const reviewPayment = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!pr) throw new Error("الطلب غير موجود");
     if (pr.status !== "pending") throw new Error("تمت مراجعة هذا الطلب مسبقًا");
+    if (data.approve && pr.receipt_path) {
+      const { error } = await admin.storage.from("receipts").remove([pr.receipt_path]);
+      if (error) throw new Error("تعذّر حذف صورة التحويل؛ لم يتم تفعيل الاشتراك");
+    }
     const now = new Date();
-    await admin
+    const { error: reviewError } = await admin
       .from("payment_requests")
       .update({
         status: data.approve ? "approved" : "rejected",
+        receipt_path: data.approve ? null : pr.receipt_path,
         reviewed_by: context.userId,
         reviewed_at: now.toISOString(),
         review_note: data.note ?? null,
       })
       .eq("id", data.id);
+    if (reviewError) throw new Error("تعذّر حفظ نتيجة مراجعة الدفع");
 
     if (data.approve) {
       const { data: cur } = await admin
@@ -160,6 +172,36 @@ export const reviewPayment = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const reviewStudentRegistration = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ userId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const admin = await assertStaff(context as Ctx, false, "students");
+    const { data: profile, error: profileError } = await admin
+      .from("profiles")
+      .select("registration_status, id_card_path")
+      .eq("id", data.userId)
+      .maybeSingle();
+    if (profileError || !profile) throw new Error("تعذّر تحميل بيانات الحساب");
+    if (profile.registration_status !== "pending") throw new Error("تمت مراجعة هذا الحساب مسبقًا");
+    if (!profile.id_card_path) throw new Error("لا توجد صورة كارنيه لمراجعتها");
+
+    const { error: deleteError } = await admin.storage
+      .from("student-ids")
+      .remove([profile.id_card_path]);
+    if (deleteError) throw new Error("تعذّر حذف صورة الكارنيه؛ لم يتم تفعيل الحساب");
+
+    const { error: updateError } = await admin
+      .from("profiles")
+      .update({ registration_status: "active", id_card_path: null })
+      .eq("id", data.userId)
+      .eq("registration_status", "pending");
+    if (updateError) throw new Error("حُذفت الصورة لكن تعذّر تفعيل الحساب؛ راجع الحالة في قائمة الطلاب");
+
+    await notifyUser(admin, data.userId, "تم تفعيل حسابك", "تمت مراجعة بياناتك، وأصبح حسابك مفعّلًا.", context.userId);
+    return { ok: true };
+  });
+
 export const setSubscriptionStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -172,7 +214,25 @@ export const setSubscriptionStatus = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const admin = await assertStaff(context as Ctx);
+    const admin = await assertStaff(context as Ctx, false, "payments");
+    if (data.status === "active") {
+      const { data: requests, error: requestsError } = await admin
+        .from("payment_requests")
+        .select("id, receipt_path")
+        .eq("user_id", data.userId)
+        .not("receipt_path", "is", null);
+      if (requestsError) throw new Error("تعذّر العثور على صور التحويل");
+      const paths = (requests ?? []).map((request) => request.receipt_path).filter((path): path is string => !!path);
+      if (paths.length) {
+        const { error } = await admin.storage.from("receipts").remove(paths);
+        if (error) throw new Error("تعذّر حذف صور التحويل؛ لم يتم تفعيل الاشتراك");
+        const { error: clearError } = await admin
+          .from("payment_requests")
+          .update({ receipt_path: null })
+          .eq("user_id", data.userId);
+        if (clearError) throw new Error("تعذّر تنظيف مراجع صور التحويل");
+      }
+    }
     const patch: {
       status: typeof data.status;
       start_at?: string;
@@ -214,7 +274,7 @@ export const sendNotification = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const admin = await assertStaff(context as Ctx);
+    const admin = await assertStaff(context as Ctx, false, "communications");
     const { data: n, error } = await admin
       .from("notifications")
       .insert({
@@ -242,22 +302,20 @@ export const sendNotification = createServerFn({ method: "POST" })
 export const setStaffRole = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ phone: z.string().regex(/^01\d{9}$/), makeStaff: z.boolean() }).parse(d),
+    z.object({
+      userId: z.string().uuid(),
+      makeStaff: z.boolean(),
+      permissions: z.array(z.enum(["students", "payments", "content", "communications"])).max(4).default([]),
+    }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const admin = await assertStaff(context as Ctx, true);
-    const { data: p } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("phone", data.phone)
-      .maybeSingle();
-    if (!p) throw new Error("لا يوجد حساب بهذا الرقم");
-    if (p.id === context.userId) throw new Error("لا يمكنك تعديل صلاحيتك");
-    if (data.makeStaff)
-      await admin
-        .from("user_roles")
-        .upsert({ user_id: p.id, role: "staff" }, { onConflict: "user_id,role" });
-    else await admin.from("user_roles").delete().eq("user_id", p.id).eq("role", "staff");
+    await assertStaff(context as Ctx, true);
+    const { error } = await (context as Ctx).supabase.rpc("set_staff_access", {
+      _user_id: data.userId,
+      _make_staff: data.makeStaff,
+      _permissions: data.permissions,
+    });
+    if (error) throw new Error(error.message);
     return { ok: true };
   });
 
@@ -267,7 +325,7 @@ export const resetStudentPassword = createServerFn({ method: "POST" })
     z.object({ userId: z.string().uuid(), password: z.string().min(8).max(72) }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const admin = await assertStaff(context as Ctx);
+    const admin = await assertStaff(context as Ctx, false, "students");
     const { data: isOwnerTarget } = await admin
       .from("user_roles")
       .select("role")
@@ -285,7 +343,7 @@ export const unlinkTelegram = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ userId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const admin = await assertStaff(context as Ctx);
+    const admin = await assertStaff(context as Ctx, false, "students");
     await admin.from("telegram_links").delete().eq("user_id", data.userId);
     return { ok: true };
   });
@@ -306,7 +364,7 @@ export const announceAndNotify = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const admin = await assertStaff(context as Ctx);
+    const admin = await assertStaff(context as Ctx, false, "communications");
     const { error } = await admin.from("announcements").insert({
       title: data.title,
       body: data.body,

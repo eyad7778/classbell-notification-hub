@@ -28,10 +28,10 @@ export function useMe() {
       const { data: u } = await supabase.auth.getUser();
       const id = u.user?.id;
       if (!id) throw new Error("not signed in");
-      const [p, s, t, r] = await Promise.all([
+      const [p, s, t, r, staffPermissions] = await Promise.all([
         supabase
           .from("profiles")
-          .select("full_name, phone, level, department_id, student_code")
+          .select("full_name, phone, level, department_id, student_code, registration_status, id_card_path")
           .eq("id", id)
           .maybeSingle(),
         supabase
@@ -45,8 +45,10 @@ export function useMe() {
           .eq("user_id", id)
           .maybeSingle(),
         supabase.from("user_roles").select("role").eq("user_id", id),
+        supabase.from("staff_permissions").select("permission").eq("user_id", id),
       ]);
       const roles = (r.data ?? []).map((x) => x.role);
+      const permissions = (staffPermissions.data ?? []).map((x) => x.permission);
       const isStaff = roles.includes("owner") || roles.includes("staff");
       const status = effectiveStatus(s.data as never);
       return {
@@ -56,9 +58,10 @@ export function useMe() {
         status,
         tg: t.data,
         roles,
+        permissions,
         isStaff,
         isOwner: roles.includes("owner"),
-        hasAccess: isStaff || (status === "active" && !!t.data),
+        hasAccess: isStaff || (p.data?.registration_status === "active" && status === "active" && !!t.data),
       };
     },
   });

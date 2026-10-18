@@ -54,18 +54,21 @@ function Subscription() {
     setErr("");
     if (!method) return setErr(t("اختر طريقة الدفع.", "Choose a payment method."));
     if (reference.trim().length < 3) return setErr(t("اكتب رقم العملية أو الرقم المحوَّل منه.", "Enter the transaction or sender reference."));
-    if (file && file.size > 5 * 1024 * 1024) return setErr(t("حجم الإيصال يجب ألا يتجاوز 5 ميجابايت.", "The receipt must be 5 MB or smaller."));
+    if (!file) return setErr(t("ارفع صورة التحويل أو الإيصال.", "Upload a photo of the transfer receipt."));
+    if (!( ["image/jpeg", "image/png", "image/webp"] as string[]).includes(file.type))
+      return setErr(t("اختر صورة JPG أو PNG أو WEBP.", "Choose a JPG, PNG, or WEBP image."));
+    if (file.size > 5 * 1024 * 1024) return setErr(t("حجم الإيصال يجب ألا يتجاوز 5 ميجابايت.", "The receipt must be 5 MB or smaller."));
     setBusy(true);
-    let receipt_path: string | null = null;
-    if (file) {
-      const path = `${me.data!.id}/${Date.now()}-${file.name.replace(/[^\w.-]/g, "_")}`;
-      const up = await supabase.storage.from("receipts").upload(path, file);
-      if (up.error) { setBusy(false); return setErr(t("تعذّر رفع الإيصال، حاول مرة أخرى.", "Could not upload the receipt. Try again.")); }
-      receipt_path = path;
-    }
-    const { error } = await supabase.from("payment_requests").insert({ user_id: me.data!.id, amount: s!.subscription_price, method, reference: reference.trim(), receipt_path });
+    const extension = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
+    const receipt_path = `${me.data.id}/${crypto.randomUUID()}.${extension}`;
+    const up = await supabase.storage.from("receipts").upload(receipt_path, file, { contentType: file.type, upsert: false });
+    if (up.error) { setBusy(false); return setErr(t("تعذّر رفع الإيصال، حاول مرة أخرى.", "Could not upload the receipt. Try again.")); }
+    const { error } = await supabase.from("payment_requests").insert({ user_id: me.data.id, amount: s.subscription_price, method, reference: reference.trim(), receipt_path });
     setBusy(false);
-    if (error) return setErr(t("تعذّر إرسال الطلب، حاول مرة أخرى.", "Could not submit your request. Try again."));
+    if (error) {
+      await supabase.storage.from("receipts").remove([receipt_path]);
+      return setErr(t("تعذّر إرسال الطلب، حاول مرة أخرى.", "Could not submit your request. Try again."));
+    }
     toast.success(t("تم إرسال طلبك للمراجعة", "Your request was submitted for review"));
     setReference(""); setFile(null);
     qc.invalidateQueries();
@@ -120,8 +123,8 @@ function Subscription() {
               <Input id="ref" value={reference} onChange={(e) => setReference(e.target.value)} dir="auto" />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="receipt">{t("صورة الإيصال (اختياري)", "Receipt image (optional)")}</Label>
-              <Input id="receipt" type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+              <Label htmlFor="receipt">{t("صورة التحويل أو الإيصال", "Transfer receipt image")}</Label>
+              <Input id="receipt" type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
             </div>
             {err && <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive sm:col-span-2">{err}</p>}
             <Button type="submit" disabled={busy} className="sm:col-span-2">{busy && <Loader2 className="size-4 animate-spin" />} {t("إرسال للمراجعة", "Submit for review")}</Button>

@@ -11,7 +11,9 @@ import {
   Megaphone,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useState, type ChangeEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { statusLabel, useMe } from "@/hooks/use-me";
 import { AccessGate, Card, ErrorBox, fmtDate, kindLabel, Loading } from "@/components/app-ui";
@@ -31,9 +33,46 @@ function StudentHome() {
   const me = useMe();
   const t = useText();
   const queryClient = useQueryClient();
+  const [idCardBusy, setIdCardBusy] = useState(false);
+  const [idCardError, setIdCardError] = useState("");
   const userId = me.data?.id;
   const hasAccess = me.data?.hasAccess;
   const departmentId = me.data?.profile?.department_id;
+  async function uploadIdCard(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !userId) return;
+    setIdCardError("");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setIdCardError(t("اختر صورة JPG أو PNG أو WEBP.", "Choose a JPG, PNG, or WEBP image."));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setIdCardError(t("حجم الصورة يجب ألا يتجاوز 5 ميجابايت.", "The image must be 5 MB or smaller."));
+      return;
+    }
+    setIdCardBusy(true);
+    const extension = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
+    const path = `${userId}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabase.storage.from("student-ids").upload(path, file, {
+      contentType: file.type,
+      upsert: false,
+    });
+    if (uploadError) {
+      setIdCardBusy(false);
+      setIdCardError(t("تعذّر رفع الصورة. حاول مرة أخرى.", "Could not upload the image. Try again."));
+      return;
+    }
+    const { error: profileError } = await supabase.from("profiles").update({ id_card_path: path }).eq("id", userId);
+    if (profileError) {
+      await supabase.storage.from("student-ids").remove([path]);
+      setIdCardBusy(false);
+      setIdCardError(t("تعذّر حفظ الصورة. حاول مرة أخرى.", "Could not save the image. Try again."));
+      return;
+    }
+    setIdCardBusy(false);
+    toast.success(t("تم رفع صورة الكارنيه للمراجعة", "Your ID photo was uploaded for review"));
+    await queryClient.invalidateQueries({ queryKey: ["me"] });
+  }
   const feed = useQuery({
     queryKey: ["home-feed", userId],
     enabled: !!hasAccess && !!userId,
@@ -196,7 +235,28 @@ function StudentHome() {
         </div>
       </section>
 
-      {!me.data.hasAccess ? (
+      {me.data.profile?.registration_status === "pending" ? (
+        <Card className="border-warning/40 bg-warning-soft/40">
+          <div className="flex items-start gap-3">
+            <CircleAlert className="mt-0.5 size-5 shrink-0 text-warning" />
+            <div>
+              <h2 className="font-bold">{t("حسابك قيد مراجعة الإدارة", "Your account is waiting for review")}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {me.data.profile?.id_card_path
+                  ? t("هنراجع صورة الكارنيه ونفعّل الحساب. هتتحذف الصورة تلقائيًا بعد التفعيل.", "We will review your student ID and activate your account. The image will be deleted automatically after approval.")
+                  : t("ارفع صورة الكارنيه لإكمال مراجعة الحساب. هتتحذف الصورة تلقائيًا بعد التفعيل.", "Upload your ID photo to complete account review. The image will be deleted automatically after approval.")}
+              </p>
+              {!me.data.profile?.id_card_path && (
+                <div className="mt-3 max-w-sm space-y-2">
+                  <Input type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadIdCard} disabled={idCardBusy} />
+                  {idCardBusy && <p className="text-xs text-muted-foreground">{t("جارٍ رفع الصورة…", "Uploading image…")}</p>}
+                  {idCardError && <p role="alert" className="text-xs text-destructive">{idCardError}</p>}
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+      ) : !me.data.hasAccess ? (
         <Card className="border-warning/40 bg-warning-soft/40">
           <div className="flex items-start gap-3">
             <CircleAlert className="mt-0.5 size-5 shrink-0 text-warning" />

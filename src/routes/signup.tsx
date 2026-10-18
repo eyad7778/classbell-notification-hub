@@ -9,6 +9,7 @@ import { AuthCard } from "@/components/auth-card";
 import { supabase } from "@/integrations/supabase/client";
 import { authErrorAr, isValidEgyptPhone, normalizePhone, phoneToEmail } from "@/lib/auth";
 import { useText } from "@/hooks/use-preferences";
+import { STUDY_LEVELS } from "@/lib/staff-permissions";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({
@@ -32,10 +33,12 @@ function Signup() {
     phone: "",
     studentCode: "",
     departmentId: "",
+    level: "",
     password: "",
     confirm: "",
   });
   const [error, setError] = useState("");
+  const [idCard, setIdCard] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -70,6 +73,13 @@ function Signup() {
       !departments.data?.some((department) => department.id === form.departmentId)
     )
       return setError(t("اختر قسمًا دراسيًا متاحًا.", "Choose an available department."));
+    if (!STUDY_LEVELS.includes(form.level as (typeof STUDY_LEVELS)[number]))
+      return setError(t("اختر الفرقة الدراسية.", "Choose your study year."));
+    if (!idCard) return setError(t("ارفع صورة كارنيه المعهد.", "Upload a photo of your institute ID."));
+    if (!["image/jpeg", "image/png", "image/webp"].includes(idCard.type))
+      return setError(t("اختر صورة JPG أو PNG أو WEBP.", "Choose a JPG, PNG, or WEBP image."));
+    if (idCard.size > 5 * 1024 * 1024)
+      return setError(t("حجم الصورة يجب ألا يتجاوز 5 ميجابايت.", "The image must be 5 MB or smaller."));
     if (form.password.length < 8) return setError(t("كلمة المرور يجب ألا تقل عن 8 أحرف.", "Password must be at least 8 characters."));
     if (form.password !== form.confirm) return setError(t("كلمتا المرور غير متطابقتين.", "Passwords do not match."));
     setLoading(true);
@@ -83,6 +93,7 @@ function Signup() {
           phone: p,
           student_code: studentCode,
           department_id: form.departmentId,
+          level: form.level,
         },
         emailRedirectTo: window.location.origin,
       },
@@ -103,6 +114,33 @@ function Signup() {
       ));
     }
     if (!data.session) return setError(t("الحساب ينتظر تأكيد البريد، لكن التسجيل هنا برقم الهاتف. تواصل مع الإدارة لتصحيح إعداد تأكيد الحساب؛ تسجيل الدخول لن يعمل قبل ذلك.", "Your account requires email confirmation, but registration uses a phone number. Contact the administration to correct the confirmation setting before signing in."));
+    const extension = idCard.type === "image/jpeg" ? "jpg" : idCard.type === "image/png" ? "png" : "webp";
+    const idCardPath = `${data.user!.id}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabase.storage
+      .from("student-ids")
+      .upload(idCardPath, idCard, { contentType: idCard.type, upsert: false });
+    if (uploadError) {
+      navigate({ to: "/app" });
+      return;
+    }
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({ id_card_path: idCardPath })
+      .eq("id", data.user!.id);
+    if (profileError) {
+      await supabase.storage.from("student-ids").remove([idCardPath]);
+      navigate({ to: "/app" });
+      return;
+    }
+    const { data: registration } = await supabase
+      .from("profiles")
+      .select("registration_status")
+      .eq("id", data.user!.id)
+      .maybeSingle();
+    if (registration?.registration_status === "active") {
+      await supabase.storage.from("student-ids").remove([idCardPath]);
+      await supabase.from("profiles").update({ id_card_path: null }).eq("id", data.user!.id);
+    }
     navigate({ to: "/app" });
     } catch (cause) {
       setError(t(
@@ -187,6 +225,32 @@ function Signup() {
               {t("تعذّر تحميل الأقسام. أعد تحميل الصفحة أو تواصل مع الإدارة.", "Could not load departments. Reload the page or contact the administration.")}
             </p>
           )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="level">{t("الفرقة الدراسية", "Study year")}</Label>
+          <select
+            id="level"
+            value={form.level}
+            onChange={(e) => setForm({ ...form, level: e.target.value })}
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            required
+          >
+            <option value="">{t("اختر الفرقة", "Choose your year")}</option>
+            {STUDY_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="id-card">{t("صورة كارنيه المعهد", "Institute ID photo")}</Label>
+          <Input
+            id="id-card"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(e) => setIdCard(e.target.files?.[0] ?? null)}
+            required
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("الصورة خاصة وتظهر للإدارة للمراجعة، ثم تُحذف تلقائيًا بعد تفعيل الحساب. الحد الأقصى 5 ميجابايت.", "Only the administration can view this private image. It is deleted automatically when your account is approved. Maximum 5 MB.")}
+          </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">

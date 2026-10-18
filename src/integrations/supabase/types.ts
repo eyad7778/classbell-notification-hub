@@ -402,8 +402,10 @@ export type Database = {
           department_id: string | null
           full_name: string
           id: string
+          id_card_path: string | null
           level: string | null
           phone: string
+          registration_status: "pending" | "active"
           student_code: string | null
           updated_at: string
         }
@@ -412,8 +414,10 @@ export type Database = {
           department_id?: string | null
           full_name?: string
           id: string
+          id_card_path?: string | null
           level?: string | null
           phone?: string
+          registration_status?: "pending" | "active"
           student_code?: string | null
           updated_at?: string
         }
@@ -422,8 +426,10 @@ export type Database = {
           department_id?: string | null
           full_name?: string
           id?: string
+          id_card_path?: string | null
           level?: string | null
           phone?: string
+          registration_status?: "pending" | "active"
           student_code?: string | null
           updated_at?: string
         }
@@ -711,6 +717,24 @@ export type Database = {
         }
         Relationships: []
       }
+      staff_permissions: {
+        Row: {
+          created_at: string
+          permission: "students" | "payments" | "content" | "communications"
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          permission: "students" | "payments" | "content" | "communications"
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          permission?: "students" | "payments" | "content" | "communications"
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -725,6 +749,10 @@ export type Database = {
         Returns: Database["public"]["Enums"]["subscription_status"]
       }
       has_access: { Args: { _user_id: string }; Returns: boolean }
+      has_staff_permission: {
+        Args: { _permission: string; _user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -734,6 +762,10 @@ export type Database = {
       }
       is_staff: { Args: { _user_id: string }; Returns: boolean }
       lecture_storage_subject: { Args: { _path: string }; Returns: string }
+      set_staff_access: {
+        Args: { _make_staff: boolean; _permissions?: string[]; _user_id: string }
+        Returns: undefined
+      }
       matches_content_target: {
         Args: { _department_ids: string[]; _levels: string[]; _user_id: string }
         Returns: boolean

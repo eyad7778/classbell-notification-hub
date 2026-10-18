@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 import { Logo } from "@/components/site-shell";
 import { useMe } from "@/hooks/use-me";
@@ -9,17 +9,23 @@ export const Route = createFileRoute("/_authenticated/admin")({
 });
 
 const nav = [
-  { to: "/admin", label: "الرئيسية والمدفوعات", exact: true },
-  { to: "/admin/students", label: "الطلاب" },
-  { to: "/admin/content", label: "الأقسام والمحتوى" },
-  { to: "/admin/messages", label: "الإعلانات والإشعارات" },
-  { to: "/admin/settings", label: "الإعدادات" },
+  { to: "/admin", label: "الرئيسية والمدفوعات", exact: true, permission: "payments" },
+  { to: "/admin/students", label: "الطلاب", permission: "students" },
+  { to: "/admin/content", label: "الأقسام والمحتوى", permission: "content" },
+  { to: "/admin/messages", label: "الإعلانات والإشعارات", permission: "communications" },
+  { to: "/admin/settings", label: "الإعدادات", permission: "owner" },
 ] as const;
 
 function AdminLayout() {
   const me = useMe();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   if (me.isLoading) return <Loading />;
-  if (!me.data?.isStaff)
+  const isOwner = !!me.data?.isOwner;
+  const permissions = me.data?.permissions ?? [];
+  const normalizedPath = pathname.replace(/\/+$/, "") || "/";
+  const currentPage = nav.find((item) => item.to === "/admin" ? normalizedPath === "/admin" : normalizedPath.startsWith(item.to));
+  const canOpenPage = isOwner || (!!currentPage && currentPage.permission !== "owner" && permissions.includes(currentPage.permission));
+  if (!me.data?.isStaff || !canOpenPage)
     return (
       <div className="mx-auto max-w-md p-8">
         <ErrorBox text="هذه الصفحة للإدارة فقط." />
@@ -43,7 +49,7 @@ function AdminLayout() {
           </Link>
         </div>
         <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 pb-2">
-          {nav.map((n) => (
+          {nav.filter((n) => isOwner || (n.permission !== "owner" && permissions.includes(n.permission))).map((n) => (
             <Link
               key={n.to}
               to={n.to}
