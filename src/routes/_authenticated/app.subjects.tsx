@@ -30,14 +30,21 @@ function Subjects() {
       {list.length === 0 ? <Empty title={t("لا توجد مواد بعد", "No subjects yet")} /> : (
         <div className="grid gap-3 sm:grid-cols-2">
           {list.map((s) => (
-            <Link key={s.id} to="/app/subjects/$id" params={{ id: s.id }}>
-              <Card className="h-full transition hover:border-primary">
+            <Link
+              key={s.id}
+              to="/app/subjects/$id"
+              params={{ id: s.id }}
+              aria-label={`${t("افتح محاضرات مادة", "Open lectures for")} ${s.name}`}
+              className="group block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <Card className="h-full cursor-pointer transition hover:border-primary group-hover:border-primary group-focus-visible:border-primary">
                 <div className="flex items-start gap-3">
                   <span className="grid size-10 place-items-center rounded-xl bg-primary-soft text-primary"><BookOpen className="size-5" /></span>
                   <div>
                     <p className="font-bold">{s.name}</p>
                     <p className="text-xs text-muted-foreground">{[s.code, s.level, s.term].filter(Boolean).join(" · ")}</p>
                     <p className="mt-2 text-sm text-muted-foreground">{(s.lectures as unknown as { count: number }[])?.[0]?.count ?? 0} {t("محاضرة", "lectures")}</p>
+                    <p className="mt-2 text-xs font-semibold text-primary">{t("اضغط لعرض المحاضرات ←", "Open lectures →")}</p>
                   </div>
                 </div>
               </Card>
