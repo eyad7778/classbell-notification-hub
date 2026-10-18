@@ -1,4 +1,5 @@
 # Smart Student roadmap
+- [ ] Diagnose and fix the account creation error; verify signup with real input.
 - [x] Vercel migration: prepare external deployment configuration and migration instructions.
 - [ ] Vercel connection and live verification: blocked on restoring the Cloud export into a user-owned external backend and adding its environment variables in Vercel.
 - [x] Phase 1: design system, public pages, phone auth, full database + RLS, seed data
