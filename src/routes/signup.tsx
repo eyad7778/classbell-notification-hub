@@ -17,6 +17,8 @@ export const Route = createFileRoute("/signup")({
       { name: "description", content: "أنشئ حسابك الطلابي في Smart Student خلال دقيقة." },
       { property: "og:title", content: "إنشاء حساب — Smart Student" },
       { property: "og:description", content: "انضم إلى Smart Student برقم هاتفك." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Signup,
@@ -71,6 +73,7 @@ function Signup() {
     if (form.password.length < 8) return setError(t("كلمة المرور يجب ألا تقل عن 8 أحرف.", "Password must be at least 8 characters."));
     if (form.password !== form.confirm) return setError(t("كلمتا المرور غير متطابقتين.", "Passwords do not match."));
     setLoading(true);
+    try {
     const { data, error } = await supabase.auth.signUp({
       email: phoneToEmail(p),
       password: form.password,
@@ -84,17 +87,31 @@ function Signup() {
         emailRedirectTo: window.location.origin,
       },
     });
-    setLoading(false);
     if (error) {
       if (
         error.message.toLowerCase().includes("student_code") ||
         error.message.toLowerCase().includes("profiles_student_code_unique")
       )
         return setError(t("كود الطالب مسجل بالفعل.", "This student code is already registered."));
-      return setError(t(authErrorAr(error.message), "Could not create your account. Check your details and try again."));
+      return setError(t(
+        authErrorAr(error.message, error.code),
+        error.code === "over_email_send_rate_limit"
+          ? "Account creation is blocked by the confirmation-email sending limit. Contact the administration to configure phone-based registration without email confirmation."
+          : error.code === "unexpected_failure"
+            ? "The service could not save your account. Contact the administration to review student account setup."
+            : "Could not create your account. Check your details and try again.",
+      ));
     }
-    if (!data.session) return setError(t("تم إنشاء الحساب. سجّل الدخول الآن.", "Account created. Sign in to continue."));
+    if (!data.session) return setError(t("الحساب ينتظر تأكيد البريد، لكن التسجيل هنا برقم الهاتف. تواصل مع الإدارة لتصحيح إعداد تأكيد الحساب؛ تسجيل الدخول لن يعمل قبل ذلك.", "Your account requires email confirmation, but registration uses a phone number. Contact the administration to correct the confirmation setting before signing in."));
     navigate({ to: "/app" });
+    } catch (cause) {
+      setError(t(
+        authErrorAr(cause instanceof Error ? cause.message : "network"),
+        "Could not connect to the service. Check your connection and try again.",
+      ));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
