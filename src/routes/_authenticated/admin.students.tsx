@@ -87,7 +87,8 @@ function Students() {
     const { data, error } = await supabase.storage.from("student-ids").createSignedUrl(path, 300);
     if (error || !data) {
       popup?.close();
-      return toast.error("تعذّر فتح صورة الكارنيه");
+      toast.error("تعذّر فتح صورة الكارنيه");
+      return;
     }
     if (popup) popup.location.href = data.signedUrl;
     else window.location.assign(data.signedUrl);

@@ -265,7 +265,8 @@ function Content() {
     const url = prompt("رابط المورد", item.url)?.trim();
     if (!url) return;
     try {
-      new URL(url);
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error();
     } catch {
       toast.error("الرابط غير صالح");
       return;
@@ -339,7 +340,10 @@ function Content() {
   async function delLecture(id: string, path: string | null) {
     if (!confirm("حذف المحاضرة؟")) return;
     const { error } = await supabase.from("lectures").delete().eq("id", id);
-    if (error) return toast.error("تعذّر حذف المحاضرة");
+    if (error) {
+      toast.error("تعذّر حذف المحاضرة");
+      return;
+    }
     if (path) await supabase.storage.from("lectures").remove([path]);
     toast.success("تم حذف المحاضرة وملفات روابطها");
     qc.invalidateQueries();

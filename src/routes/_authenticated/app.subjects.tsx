@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/use-me";
-import { AccessGate, Card, Empty, Loading, PageTitle } from "@/components/app-ui";
+import { AccessGate, Card, Empty, ErrorBox, Loading, PageTitle } from "@/components/app-ui";
 import { pageMeta } from "@/lib/meta";
 import { useText } from "@/hooks/use-preferences";
 
@@ -18,11 +19,26 @@ function Subjects() {
   const q = useQuery({
     queryKey: ["subjects"],
     enabled: !!me.data?.hasAccess,
-    queryFn: async () => (await supabase.from("subjects").select("*, lectures(count)").order("sort_order")).data ?? [],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("subjects")
+        .select("*, lectures(count)")
+        .order("sort_order");
+      if (error) throw error;
+      return data ?? [];
+    },
   });
   if (me.isLoading) return <Loading />;
   if (!me.data?.hasAccess) return <AccessGate status={me.data?.status ?? "awaiting_payment"} linked={!!me.data?.tg} />;
   if (q.isLoading) return <Loading />;
+  if (q.isError) return (
+    <div>
+      <ErrorBox text="تعذّر تحميل المواد الدراسية. تحقق من الاتصال ثم أعد المحاولة." />
+      <Button className="mt-3" variant="outline" onClick={() => void q.refetch()}>
+        إعادة تحميل المواد
+      </Button>
+    </div>
+  );
   const list = q.data ?? [];
   return (
     <div>

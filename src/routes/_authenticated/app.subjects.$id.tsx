@@ -17,6 +17,7 @@ import {
   PageTitle,
 } from "@/components/app-ui";
 import { pageMeta } from "@/lib/meta";
+import { contentTarget, viewerKind, type ViewerKind } from "@/lib/lecture-links";
 import { useText } from "@/hooks/use-preferences";
 
 export const Route = createFileRoute("/_authenticated/app/subjects/$id")({
@@ -24,45 +25,7 @@ export const Route = createFileRoute("/_authenticated/app/subjects/$id")({
   component: SubjectPage,
 });
 
-type Viewer = { title: string; url: string; kind: "frame" | "image" | "video" };
-
-function inAppUrl(rawUrl: string) {
-  const value = rawUrl.trim();
-  const url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}`);
-  if (url.protocol !== "https:" && url.protocol !== "http:")
-    throw new Error("رابط غير صالح");
-  if (url.protocol === "http:") url.protocol = "https:";
-
-  const host = url.hostname.toLowerCase();
-  const driveId = url.pathname.match(/\/d\/([^/]+)/)?.[1] ?? url.searchParams.get("id");
-  if (host === "drive.google.com" && driveId)
-    return `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/preview`;
-  if (host === "docs.google.com" && driveId) {
-    if (url.pathname.includes("/presentation/"))
-      return `https://docs.google.com/presentation/d/${encodeURIComponent(driveId)}/embed`;
-    if (url.pathname.includes("/spreadsheets/"))
-      return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(driveId)}/preview`;
-    return `https://docs.google.com/document/d/${encodeURIComponent(driveId)}/preview`;
-  }
-  if (host === "youtu.be" || host === "youtube.com" || host.endsWith(".youtube.com")) {
-    const videoId = host === "youtu.be"
-      ? url.pathname.split("/").filter(Boolean)[0]
-      : url.searchParams.get("v") ?? url.pathname.match(/\/(?:embed|shorts)\/([^/]+)/)?.[1];
-    if (videoId) return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}`;
-  }
-  if (host === "vimeo.com") {
-    const videoId = url.pathname.split("/").filter(Boolean)[0];
-    if (videoId && /^\d+$/.test(videoId)) return `https://player.vimeo.com/video/${videoId}`;
-  }
-  return url.toString();
-}
-
-function viewerKind(url: string): Viewer["kind"] {
-  const pathname = new URL(url).pathname.toLowerCase();
-  if (/\.(mp4|webm|ogv|mov)$/.test(pathname)) return "video";
-  if (/\.(png|jpe?g|gif|webp|avif)$/.test(pathname)) return "image";
-  return "frame";
-}
+type Viewer = { title: string; url: string; fallbackUrl: string; kind: ViewerKind };
 
 function SubjectPage() {
   const { id } = Route.useParams();
@@ -75,20 +38,23 @@ function SubjectPage() {
     if (!viewer) return;
     viewerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [viewer]);
-  async function openInApp(title: string, url: string, storagePath?: string | null) {
+  async function openContent(title: string, url: string, storagePath?: string | null) {
     setOpening(true);
     try {
-      let resolvedUrl = url;
       if (storagePath) {
         const { data, error } = await supabase.storage
           .from("lectures")
           .createSignedUrl(storagePath, 600);
         if (error || !data) throw new Error("تعذّر فتح الملف");
-        resolvedUrl = data.signedUrl;
-      } else {
-        resolvedUrl = inAppUrl(url);
+        setViewer({ title, url: data.signedUrl, fallbackUrl: data.signedUrl, kind: viewerKind(data.signedUrl) });
+        return;
       }
-      setViewer({ title, url: resolvedUrl, kind: viewerKind(resolvedUrl) });
+      const target = contentTarget(url);
+      if (target.action === "external") {
+        window.open(target.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      setViewer({ title, url: target.url, fallbackUrl: url, kind: target.kind });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "تعذّر فتح المحتوى داخل التطبيق");
     } finally {
@@ -117,7 +83,6 @@ function SubjectPage() {
       ]);
       if (s.error) throw s.error;
       if (l.error) throw l.error;
-      if (e.error) throw e.error;
       const lectureIds = (l.data ?? []).map((lecture) => lecture.id);
       const { data: resources, error: resourceError } = lectureIds.length
         ? await supabase
@@ -126,12 +91,12 @@ function SubjectPage() {
             .in("lecture_id", lectureIds)
             .order("created_at", { ascending: false })
         : { data: [], error: null };
-      if (resourceError) throw resourceError;
       return {
         subject: s.data,
         lectures: l.data ?? [],
         events: e.data ?? [],
         resources: resources ?? [],
+        resourcesFailed: !!resourceError,
       };
     },
   });
@@ -149,7 +114,7 @@ function SubjectPage() {
       </div>
     );
   if (!q.data?.subject) return <ErrorBox text={t("المادة غير موجودة.", "Subject not found.")} />;
-  const { subject, lectures, events, resources } = q.data;
+  const { subject, lectures, events, resources, resourcesFailed } = q.data;
   return (
     <div>
       <Link
@@ -174,6 +139,9 @@ function SubjectPage() {
           </ul>
         </Card>
       )}
+      {resourcesFailed && (
+        <ErrorBox text="ظهرت المحاضرات، لكن تعذّر تحميل روابط بعض الملفات. أعد تحميل الصفحة للمحاولة مجددًا." />
+      )}
       {lectures.length === 0 ? (
         <Empty title={t("لا توجد محاضرات بعد", "No lectures yet")} />
       ) : (
@@ -192,13 +160,13 @@ function SubjectPage() {
                 </div>
                 <div className="flex gap-2">
                   {l.file_path && (
-                    <Button size="sm" disabled={opening} onClick={() => void openInApp(l.title, "", l.file_path)}>
+                    <Button size="sm" disabled={opening} onClick={() => void openContent(l.title, "", l.file_path)}>
                       {opening ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
                       {t("فتح المحاضرة", "Open lecture")}
                     </Button>
                   )}
                   {l.external_url && (
-                    <Button size="sm" variant="outline" disabled={opening} onClick={() => void openInApp(l.title, l.external_url!)}>
+                    <Button size="sm" variant="outline" disabled={opening} onClick={() => void openContent(l.title, l.external_url!)}>
                       {opening ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
                       {t("فتح المحاضرة", "Open lecture")}
                     </Button>
@@ -233,7 +201,7 @@ function SubjectPage() {
                           )}
                           </span>
                         </span>
-                        <Button size="sm" variant="outline" disabled={opening} onClick={() => void openInApp(resource.name, resource.url)}>
+                        <Button size="sm" variant="outline" disabled={opening} onClick={() => void openContent(resource.name, resource.url)}>
                           {opening ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
                           {resource.resource_type === "video"
                             ? t("مشاهدة الفيديو", "Watch video")
@@ -281,6 +249,9 @@ function SubjectPage() {
           <p className="mt-2 text-xs text-muted-foreground">
             {t("إذا لم يعرض الموقع المحتوى، فقد لا يسمح بفتحه داخل صفحات أخرى.", "Some providers block displaying content inside other pages.")}
           </p>
+          <a href={viewer.fallbackUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-sm font-semibold text-primary underline">
+            {t("فتح المحتوى في تبويب جديد", "Open content in a new tab")}
+          </a>
         </Card>
         </div>
       )}

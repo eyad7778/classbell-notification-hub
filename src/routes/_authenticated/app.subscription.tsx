@@ -44,6 +44,7 @@ function Subscription() {
   if (me.isLoading || settings.isLoading) return <Loading />;
   if (!me.data || !settings.data) return <ErrorBox />;
   const s = settings.data;
+  const userId = me.data.id;
   const st = statusLabel[me.data.status];
   const isActive = me.data.status === "active";
   const hasPending = (requests.data ?? []).some((r) => r.status === "pending");
@@ -60,10 +61,10 @@ function Subscription() {
     if (file.size > 5 * 1024 * 1024) return setErr(t("حجم الإيصال يجب ألا يتجاوز 5 ميجابايت.", "The receipt must be 5 MB or smaller."));
     setBusy(true);
     const extension = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
-    const receipt_path = `${me.data.id}/${crypto.randomUUID()}.${extension}`;
+    const receipt_path = `${userId}/${crypto.randomUUID()}.${extension}`;
     const up = await supabase.storage.from("receipts").upload(receipt_path, file, { contentType: file.type, upsert: false });
     if (up.error) { setBusy(false); return setErr(t("تعذّر رفع الإيصال، حاول مرة أخرى.", "Could not upload the receipt. Try again.")); }
-    const { error } = await supabase.from("payment_requests").insert({ user_id: me.data.id, amount: s.subscription_price, method, reference: reference.trim(), receipt_path });
+    const { error } = await supabase.from("payment_requests").insert({ user_id: userId, amount: s.subscription_price, method, reference: reference.trim(), receipt_path });
     setBusy(false);
     if (error) {
       await supabase.storage.from("receipts").remove([receipt_path]);
