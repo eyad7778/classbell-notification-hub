@@ -23,7 +23,8 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         if (!msg?.chat?.id || !msg.from?.id || msg.chat.type !== "private") return Response.json({ ok: true });
 
         const text = (msg.text ?? "").trim();
-        const reply = (t: string) => tg("sendMessage", { chat_id: msg.chat!.id, text: t });
+        const chatId = msg.chat.id;
+        const reply = (t: string) => tg("sendMessage", { chat_id: chatId, text: t });
         const m = text.match(/^\/start(?:\s+([A-Za-z0-9_-]{20,64}))?$/);
         if (!m) {
           await reply("مرحبًا 👋 هذا بوت إشعارات Smart Student. لربط حسابك افتح صفحة «ربط Telegram» داخل التطبيق واضغط زر الربط.");
@@ -37,7 +38,7 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const hash = await sha256Hex(m[1]);
         // Atomic single-use consumption
-        const { data: tok } = await supabaseAdmin
+        const { data: tok, error: tokenError } = await supabaseAdmin
           .from("telegram_link_tokens")
           .update({ used_at: new Date().toISOString() })
           .eq("token_hash", hash)
@@ -45,6 +46,10 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           .gt("expires_at", new Date().toISOString())
           .select("user_id")
           .maybeSingle();
+        if (tokenError) {
+          console.error("Telegram token lookup failed", { code: tokenError.code, message: tokenError.message });
+          return Response.json({ error: "Telegram link storage unavailable" }, { status: 503 });
+        }
         if (!tok) {
           await reply("رمز الربط غير صالح أو منتهي أو مستخدم من قبل. ارجع للتطبيق واضغط «ربط حساب Telegram» مرة أخرى.");
           return Response.json({ ok: true });

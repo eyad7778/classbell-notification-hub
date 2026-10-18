@@ -4,8 +4,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 export const createTelegramLink = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    if (!process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
-      console.error("Telegram linking is missing SUPABASE_SERVICE_ROLE_KEY");
+    if (!(process.env["EXTERNAL_SERVICE_ROLE_KEY"] || process.env["SUPABASE_SERVICE_ROLE_KEY"])) {
+      console.error("Telegram linking is missing a service credential");
       return { error: "خدمة ربط Telegram غير مكتملة الإعداد على الخادم. تواصل مع الإدارة." };
     }
     if (!process.env["TELEGRAM_API_KEY"]) {
@@ -21,13 +21,20 @@ export const createTelegramLink = createServerFn({ method: "POST" })
     const bytes = crypto.getRandomValues(new Uint8Array(24));
     const token = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await supabaseAdmin.from("telegram_link_tokens").delete().eq("user_id", context.userId).is("used_at", null);
+    const { error: cleanupError } = await supabaseAdmin.from("telegram_link_tokens").delete().eq("user_id", context.userId).is("used_at", null);
+    if (cleanupError) {
+      console.error("Telegram token cleanup failed", { code: cleanupError.code, message: cleanupError.message });
+      return { error: "تعذّر تجهيز رمز الربط على الخادم. تواصل مع الإدارة." };
+    }
     const { error } = await supabaseAdmin.from("telegram_link_tokens").insert({
       token_hash: await sha256Hex(token),
       user_id: context.userId,
       expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
     });
-    if (error) return { error: "تعذّر إنشاء رمز الربط، حاول مرة أخرى." };
+    if (error) {
+      console.error("Telegram token creation failed", { code: error.code, message: error.message });
+      return { error: "تعذّر إنشاء رمز الربط، حاول مرة أخرى." };
+    }
     try {
       const bot = await botUsername();
       return { url: `https://t.me/${bot}?start=${token}`, bot };
