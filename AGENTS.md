@@ -8,3 +8,4 @@
 - Device push registration uses `src/lib/push-client.ts` to await worker activation before subscription; registration alone can return while the worker is still installing.
 - Treat device notifications as connected only after server persistence succeeds, including restored browser subscriptions; browser registration alone does not prove delivery is possible.
 - External deployments target Vercel through the existing Vite wrapper's Nitro option; Lovable keeps its managed deployment override, avoiding duplicate framework plugins.
+- External backend credentials can override the server service key via EXTERNAL_SERVICE_ROLE_KEY; the managed SUPABASE_ secret namespace is reserved and cannot accept user-entered keys.
