@@ -74,10 +74,10 @@ export function StudentOnboarding({ userId }: { userId: string | null }) {
           const registration = await navigator.serviceWorker.getRegistration();
           const subscription = await registration?.pushManager.getSubscription();
           const json = subscription?.toJSON();
-          if (subscription && json?.keys?.p256dh && json.keys.auth) {
+          if (subscription && json?.keys?.["p256dh"] && json.keys["auth"]) {
             await saveSubscription({ data: {
               endpoint: subscription.endpoint,
-              keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+              keys: { p256dh: json.keys["p256dh"], auth: json.keys["auth"] },
             } });
             setPushState("enabled");
           }
