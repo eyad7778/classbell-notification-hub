@@ -1,29 +1,29 @@
-# Welcome to your Lovable project
+# Smart Student
 
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Open your project in the [Lovable editor](https://lovable.dev) and keep building.
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: connect the project to GitHub and every change made in Lovable is committed straight to your repository.
-- **Full ownership**: this code is yours. Push to your repository and your changes sync back into Lovable, ready for your next prompt.
+Smart Student is a student portal for course materials, announcements, schedules, subscriptions, and Telegram notifications.
 
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Requirements: Node.js 22.12 or newer and npm.
 
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+```powershell
+npm install
 npm run dev
 ```
 
-## Built with
+Configure the Supabase and Telegram environment variables in the local environment and in the deployment provider before running the application.
 
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS
+## Deployment environment
+
+For moving the existing Lovable Cloud database and accounts to a user-owned backend for Vercel, follow [the Vercel deployment guide](docs/vercel.md). Cloud-managed server keys cannot be copied to an external host.
+
+Set these variables in Vercel:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `TELEGRAM_API_KEY` (the bot token from BotFather)
+
+For Drizzle migrations, also set `DATABASE_URL`. If a protected cron route is enabled, configure `CRON_SECRET` and optionally `CRON_SECRET_PREVIOUS` during rotation.
