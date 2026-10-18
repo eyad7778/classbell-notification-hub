@@ -1,4 +1,5 @@
 # Smart Student roadmap
+- [ ] Telegram: correct the bot webhook destination and verify a fresh student link; real Telegram account flow requires the student's retry.
 - [x] Replace rejected push service credential; new encrypted credential successfully reads push storage (HTTP 200).
 - [ ] Verify authenticated device connection and background delivery: blocked on a real student session/device; external unmanaged auth cannot supply a preview session.
 - [x] Classify push storage failures and prevent an unsaved browser subscription from appearing connected after reload.
