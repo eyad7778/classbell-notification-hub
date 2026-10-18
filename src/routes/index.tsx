@@ -15,6 +15,8 @@ export const Route = createFileRoute("/")({
       { name: "description", content: "تطبيق خدمات طلابية يجمع الإعلانات والمحاضرات والمواعيد والإشعارات عبر Telegram في مكان واحد." },
       { property: "og:title", content: "Smart Student — خدماتك الطلابية في مكان واحد" },
       { property: "og:description", content: "الإعلانات والمحاضرات والمواعيد والإشعارات في تطبيق واحد بدل المجموعات المتفرقة." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Index,
