@@ -1,4 +1,5 @@
 # Smart Student roadmap
+- [ ] Fix device push subscription persistence and verify against the connected service.
 - [ ] Account creation: hosted settings require email confirmation for synthetic phone emails; blocked on disabling Confirm email in the external auth dashboard. Real signup reproduced email-send rate limiting.
 - [x] Clarify signup failures and confirmation-required results; always release the submission button after connection errors.
 - [x] Vercel migration: prepare external deployment configuration and migration instructions.
