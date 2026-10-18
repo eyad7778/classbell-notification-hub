@@ -43,16 +43,17 @@ function Index() {
   const english = language === "en";
   return (
     <PublicLayout>
-      <section className="bg-hero">
+      <section className="brand-hero relative isolate overflow-hidden text-white">
         <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-14 md:grid-cols-2 md:py-20">
           <div>
-            <span className="inline-block rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold text-accent-foreground">
+            <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-white/10 px-3 py-1 text-xs font-semibold text-cyan-100 backdrop-blur">
+              <span className="size-1.5 rounded-full bg-[#28e4e8] shadow-[0_0_10px_#28e4e8]" />
               {english ? "For students of Pharaos Higher Institute for Computers, Information Systems and Management" : "لطلاب معهد الفراعنة العالي للحاسب ونظم المعلومات والإدارة"}
             </span>
-            <h1 className="mt-5 text-4xl font-extrabold leading-tight md:text-5xl">
-              {english ? <>Your student life, <span className="text-primary">in one place</span></> : <>حياتك الدراسية، <span className="text-primary">في مكان واحد</span></>}
+            <h1 className="mt-5 text-4xl font-extrabold leading-tight text-white md:text-5xl">
+              {english ? <>Your student life, <span className="text-[#2ce0e4]">in one place</span></> : <>حياتك الدراسية، <span className="text-[#2ce0e4]">في مكان واحد</span></>}
             </h1>
-            <p className="mt-4 max-w-lg text-lg leading-8 text-muted-foreground">
+            <p className="mt-4 max-w-lg text-lg leading-8 text-blue-50/75">
               {english ? "Smart Student brings announcements, lectures, schedules, and notifications together, without scattered WhatsApp and Telegram groups." : "Smart Student يجمع الإعلانات والمحاضرات والمواعيد والإشعارات، ويريحك من فوضى مجموعات الواتساب والتليجرام المتفرقة."}
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
@@ -61,7 +62,7 @@ function Index() {
               ) : (
                 <>
                   <Button asChild size="lg"><Link to="/signup">{english ? "Create an account" : "إنشاء حساب مجاني"}</Link></Button>
-                  <Button asChild size="lg" variant="outline"><Link to="/login">{english ? "I have an account" : "لدي حساب"}</Link></Button>
+                  <Button asChild size="lg" variant="outline" className="border-white/25 bg-white/5 text-white hover:bg-white/10 hover:text-white"><Link to="/login">{english ? "I have an account" : "لدي حساب"}</Link></Button>
                 </>
               )}
             </div>

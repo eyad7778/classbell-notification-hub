@@ -1,17 +1,18 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/hooks/use-session";
 import { PreferenceControls, usePreferences } from "@/hooks/use-preferences";
 
 export function Logo() {
   return (
-    <Link to="/" className="flex items-center gap-2 font-bold text-navy">
-      <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground">
-        <GraduationCap className="size-5" />
+    <Link to="/" className="group flex items-center gap-2.5 font-bold text-navy">
+      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#071a36] shadow-[0_5px_16px_-7px_#071a36] ring-1 ring-cyan-300/30 transition-transform group-hover:-rotate-3">
+        <img src="/brand-mark.svg" alt="" aria-hidden="true" className="size-8" />
       </span>
-      <span className="text-lg" dir="ltr">Smart Student</span>
+      <span className="text-lg tracking-tight" dir="ltr">
+        Smart <span className="text-[var(--brand-word)]">Student</span>
+      </span>
     </Link>
   );
 }

@@ -9,8 +9,8 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || "Smart Student", {
       body: data.body || "لديك إشعار جديد",
-      icon: "/favicon.ico",
-      badge: "/favicon.ico",
+      icon: "/brand-mark.svg",
+      badge: "/brand-mark.svg",
       tag: data.tag || undefined,
       data: { url: data.url || "/app/notifications" },
       dir: "auto",
