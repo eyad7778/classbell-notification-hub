@@ -1,6 +1,7 @@
 # Smart Student roadmap
 - [x] Telegram: accept the external service credential override and distinguish token storage errors from invalid tokens; 11 targeted tests passed.
-- [ ] Telegram: replace the old project's webhook destination; blocked because current dev and published endpoints return HTTP 403. Need the student's actual accessible site URL, then verify a fresh Telegram link.
+- [x] Telegram: verified authenticated webhook reachability (HTTP 200) and registered https://smartstudent-gilt.vercel.app/api/public/telegram/webhook; Telegram confirmed the destination without pending errors.
+- [ ] Telegram: verify a fresh student link end-to-end; blocked on the student's retry with their real Telegram account.
 - [x] Replace rejected push service credential; new encrypted credential successfully reads push storage (HTTP 200).
 - [ ] Verify authenticated device connection and background delivery: blocked on a real student session/device; external unmanaged auth cannot supply a preview session.
 - [x] Classify push storage failures and prevent an unsaved browser subscription from appearing connected after reload.
