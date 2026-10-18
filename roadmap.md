@@ -1,5 +1,6 @@
 # Smart Student roadmap
-- [ ] Fix device push subscription persistence and verify against the connected service.
+- [ ] Device push persistence: blocked on replacing the rejected server service credential (HTTP 401, Unregistered API key); authenticated save and delivery remain unverified.
+- [x] Classify push storage failures and prevent an unsaved browser subscription from appearing connected after reload.
 - [ ] Account creation: hosted settings require email confirmation for synthetic phone emails; blocked on disabling Confirm email in the external auth dashboard. Real signup reproduced email-send rate limiting.
 - [x] Clarify signup failures and confirmation-required results; always release the submission button after connection errors.
 - [x] Vercel migration: prepare external deployment configuration and migration instructions.
