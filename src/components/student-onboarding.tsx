@@ -13,6 +13,7 @@ import {
 import { usePreferences } from "@/hooks/use-preferences";
 import { getPushConfig, savePushSubscription } from "@/lib/push.functions";
 import { getActivePushRegistration, subscribeWithKey } from "@/lib/push-client";
+import { pushErrorMessage } from "@/lib/push-errors";
 
 type PermissionState = NotificationPermission | "unsupported";
 
@@ -72,15 +73,27 @@ export function StudentOnboarding({ userId }: { userId: string | null }) {
           if (!publicKey) return;
           const registration = await navigator.serviceWorker.getRegistration();
           const subscription = await registration?.pushManager.getSubscription();
-          if (subscription) setPushState("enabled");
+          const json = subscription?.toJSON();
+          if (subscription && json?.keys?.["p256dh"] && json.keys["auth"]) {
+            await saveSubscription({ data: {
+              endpoint: subscription.endpoint,
+              keys: { p256dh: json.keys["p256dh"], auth: json.keys["auth"] },
+            } });
+            setPushState("enabled");
+          }
           else {
             setStep(steps.length - 1);
             setOpen(true);
           }
         })
-        .catch(() => undefined);
+        .catch((error: unknown) => {
+          setPushState("error");
+          setPushError(pushErrorMessage(error, english));
+          setStep(steps.length - 1);
+          setOpen(true);
+        });
     }
-  }, [getConfig, userId]);
+  }, [getConfig, saveSubscription, userId, english]);
 
   const current = steps[step] ?? steps[0];
   const permissionGranted = permission === "granted" || permission === "unsupported";
@@ -118,7 +131,7 @@ export function StudentOnboarding({ userId }: { userId: string | null }) {
       setPushState("enabled");
     } catch (error) {
       setPushState("error");
-      setPushError(error instanceof Error ? error.message : "Could not enable device notifications.");
+      setPushError(pushErrorMessage(error, english));
     }
   }
 
