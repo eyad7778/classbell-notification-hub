@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, fmtDate, kindLabel, PageTitle } from "@/components/app-ui";
 import { pageMeta } from "@/lib/meta";
+import { notifyNewAcademicContent } from "@/lib/staff.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/content")({
   head: () => pageMeta("إدارة المحتوى", "المواد والمحاضرات والملفات والمواعيد."),
@@ -28,6 +30,7 @@ function googleDriveId(value: string) {
 
 function Content() {
   const qc = useQueryClient();
+  const notifyContent = useServerFn(notifyNewAcademicContent);
   const departments = useQuery({
     queryKey: ["admin-departments"],
     queryFn: async () => (await supabase.from("departments").select("*").order("name")).data ?? [],
@@ -150,18 +153,30 @@ function Content() {
         return;
       }
     }
-    const { error } = await supabase.from("lectures").insert({
+    const { data: createdLecture, error } = await supabase.from("lectures").insert({
       subject_id: lec.subject_id,
       title: lec.title.trim(),
       week: lec.week ? Number(lec.week) : null,
       description: lec.description || null,
       external_url: lec.external_url || null,
       file_path: filePath,
-    });
+    }).select("id").single();
     if (error && filePath) await supabase.storage.from("lectures").remove([filePath]);
-    if (done("تمت إضافة المحاضرة", error)) {
-      setLec({ ...lec, title: "", week: "", description: "", external_url: "" });
-      setFile(null);
+    if (error) return void done("تمت إضافة المحاضرة", error);
+    setLec({ ...lec, title: "", week: "", description: "", external_url: "" });
+    setFile(null);
+    qc.invalidateQueries();
+    setBusy(false);
+    toast.success("تمت إضافة المحاضرة");
+    if (createdLecture?.id) {
+      try {
+        const result = await notifyContent({ data: { type: "lecture", contentId: createdLecture.id } });
+        if (result.recipients > 0)
+          toast.success(`📨 أُرسل إشعار المحاضرة تلقائيًا إلى ${result.recipients} طالب`);
+        else toast.info("📨 تم حفظ الإشعار؛ لا يوجد طلاب مستهدفون باشتراك فعّال حاليًا");
+      } catch {
+        toast.error("تمت إضافة المحاضرة، لكن تعذّر إرسال الإشعار تلقائيًا");
+      }
     }
   }
   async function addEvent(e: FormEvent) {
@@ -171,7 +186,7 @@ function Content() {
       return;
     }
     setBusy(true);
-    const { error } = await supabase.from("events").insert({
+    const { data: createdEvent, error } = await supabase.from("events").insert({
       title: ev.title.trim(),
       kind: ev.kind as "lecture",
       starts_at: new Date(ev.starts_at).toISOString(),
@@ -183,10 +198,22 @@ function Content() {
         .split(/[،,]/)
         .map((level) => level.trim())
         .filter(Boolean),
-    });
-    if (done("تمت إضافة الموعد", error)) {
-      setEv({ ...ev, title: "", starts_at: "", location: "", notes: "", targetDepartmentIds: [] });
-      setEventLevels("");
+    }).select("id").single();
+    if (error) return void done("تمت إضافة الموعد", error);
+    setEv({ ...ev, title: "", starts_at: "", location: "", notes: "", targetDepartmentIds: [] });
+    setEventLevels("");
+    qc.invalidateQueries();
+    setBusy(false);
+    toast.success("تمت إضافة الموعد");
+    if (createdEvent?.id) {
+      try {
+        const result = await notifyContent({ data: { type: "event", contentId: createdEvent.id } });
+        if (result.recipients > 0)
+          toast.success(`📨 أُرسل إشعار الموعد تلقائيًا إلى ${result.recipients} طالب`);
+        else toast.info("📨 تم حفظ الإشعار؛ لا يوجد طلاب مستهدفون باشتراك فعّال حاليًا");
+      } catch {
+        toast.error("تمت إضافة الموعد، لكن تعذّر إرسال الإشعار تلقائيًا");
+      }
     }
   }
   async function addResource(e: FormEvent) {

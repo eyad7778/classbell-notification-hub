@@ -57,7 +57,7 @@ async function eligibleTargetUsers(
 ) {
   const now = new Date().toISOString();
   const [profiles, subscriptions, links] = await Promise.all([
-    admin.from("profiles").select("id, department_id, level"),
+    admin.from("profiles").select("id, department_id, level, registration_status"),
     admin
       .from("subscriptions")
       .select("user_id")
@@ -75,11 +75,96 @@ async function eligibleTargetUsers(
         (departmentIds.length === 0 ||
           (!!p.department_id && departmentIds.includes(p.department_id))) &&
         (levels.length === 0 || (!!p.level && levels.includes(p.level))) &&
+        p.registration_status === "active" &&
         activeIds.has(p.id) &&
         linkedIds.has(p.id),
     )
     .map((p) => p.id);
 }
+
+export const notifyNewAcademicContent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ type: z.enum(["lecture", "event"]), contentId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const admin = await assertStaff(context as Ctx, false, "content");
+    let title: string;
+    let body: string;
+    let link: string;
+    let departmentIds: string[] = [];
+    let levels: string[] = [];
+
+    if (data.type === "lecture") {
+      const { data: lecture, error } = await admin.from("lectures")
+        .select("id, title, week, description, subject_id").eq("id", data.contentId).maybeSingle();
+      if (error || !lecture) throw new Error("تعذّر تجهيز إشعار المحاضرة");
+      const { data: subject, error: subjectError } = await admin.from("subjects")
+        .select("name, department_id, level").eq("id", lecture.subject_id).maybeSingle();
+      if (subjectError || !subject) throw new Error("تعذّر تحديد المادة للمحاضرة");
+      departmentIds = subject.department_id ? [subject.department_id] : [];
+      levels = subject.level ? [subject.level] : [];
+      title = `📚 محاضرة جديدة: ${subject.name}`;
+      body = [
+        "✨ تمت إضافة محاضرة جديدة",
+        `📖 المحاضرة: ${lecture.title}`,
+        `📚 المادة: ${subject.name}`,
+        lecture.week ? `🗓️ الأسبوع: ${lecture.week}` : null,
+        lecture.description ? `📝 ${lecture.description}` : null,
+        "\nافتح التطبيق لمشاهدة المحاضرة والملفات.",
+      ].filter(Boolean).join("\n").slice(0, 1200);
+      link = "/app/subjects";
+    } else {
+      const { data: event, error } = await admin.from("events")
+        .select("id, title, kind, starts_at, location, notes, subject_id, target_department_ids, target_levels")
+        .eq("id", data.contentId).maybeSingle();
+      if (error || !event) throw new Error("تعذّر تجهيز إشعار الموعد");
+      let subjectName: string | null = null;
+      if (event.subject_id) {
+        const { data: subject } = await admin.from("subjects").select("name")
+          .eq("id", event.subject_id).maybeSingle();
+        subjectName = subject?.name ?? null;
+      }
+      departmentIds = event.target_department_ids ?? [];
+      levels = event.target_levels ?? [];
+      const kind = { lecture: "محاضرة", exam: "امتحان", assignment: "تكليف", other: "موعد" }[event.kind];
+      const when = new Intl.DateTimeFormat("ar-EG", {
+        dateStyle: "full", timeStyle: "short", timeZone: "Africa/Cairo",
+      }).format(new Date(event.starts_at));
+      title = `🗓️ ${kind} جديد: ${event.title}`;
+      body = [
+        "✨ تمت إضافة موعد جديد",
+        `📌 النوع: ${kind}`,
+        `📝 العنوان: ${event.title}`,
+        `⏰ الموعد: ${when}`,
+        subjectName ? `📚 المادة: ${subjectName}` : null,
+        event.location ? `📍 المكان: ${event.location}` : null,
+        event.notes ? `ℹ️ ${event.notes}` : null,
+        "\nافتح التطبيق لمشاهدة تفاصيل الموعد.",
+      ].filter(Boolean).join("\n").slice(0, 1200);
+      link = "/app/schedule";
+    }
+
+    const { data: notification, error } = await admin.from("notifications").insert({
+      user_id: null,
+      title,
+      body,
+      link,
+      created_by: context.userId,
+      target_department_ids: departmentIds,
+      target_levels: levels,
+    }).select("id").single();
+    if (error || !notification) throw new Error("تعذّر حفظ إشعار المحتوى");
+
+    const ids = await eligibleTargetUsers(admin, departmentIds, levels);
+    const [{ deliverPush }, { deliverTelegram, escapeHtml }] = await Promise.all([
+      import("@/lib/push.server"),
+      import("@/lib/telegram.server"),
+    ]);
+    const [push, telegram] = await Promise.all([
+      deliverPush(admin, ids, { title, body, url: link }),
+      deliverTelegram(admin, ids, `<b>${escapeHtml(title)}</b>\n\n${escapeHtml(body)}`, notification.id),
+    ]);
+    return { ok: true, recipients: ids.length, pushSent: push.sent, telegramSent: telegram.sent };
+  });
 
 export const reviewPayment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
