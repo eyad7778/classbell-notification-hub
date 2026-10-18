@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowRight, Eye, Loader2 } from "lucide-react";
+import { ArrowRight, Eye, File, FileText, Link2, Loader2, Video } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -202,13 +202,24 @@ function SubjectPage() {
                         key={resource.id}
                         className="flex flex-wrap items-center justify-between gap-2 text-sm"
                       >
-                        <span>
+                        <span className="flex min-w-0 items-center gap-2">
+                          {resource.resource_type === "video" ? (
+                            <Video className="size-4 shrink-0 text-primary" />
+                          ) : resource.resource_type === "pdf" ? (
+                            <FileText className="size-4 shrink-0 text-primary" />
+                          ) : resource.resource_type === "external" ? (
+                            <Link2 className="size-4 shrink-0 text-primary" />
+                          ) : (
+                            <File className="size-4 shrink-0 text-primary" />
+                          )}
+                          <span className="min-w-0 truncate">
                           <b>{resource.name}</b>
                           {resource.description && (
                             <span className="ms-2 text-xs text-muted-foreground">
                               {resource.description}
                             </span>
                           )}
+                          </span>
                         </span>
                         <Button size="sm" variant="outline" disabled={opening} onClick={() => void openInApp(resource.name, resource.url)}>
                           {opening ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}

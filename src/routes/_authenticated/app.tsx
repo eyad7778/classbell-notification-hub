@@ -102,7 +102,7 @@ function AppLayout() {
   }
 
   return (
-    <div className="min-h-screen pb-24">
+    <div className="min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))]">
       <header className="sticky top-0 z-30 border-b bg-card/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-3 px-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -147,7 +147,7 @@ function AppLayout() {
         <StudentOnboarding userId={me.data?.id ?? null} />
         <Outlet />
       </main>
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 shadow-[0_-6px_24px_-18px_rgba(0,0,0,0.35)] backdrop-blur">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-6px_24px_-18px_rgba(0,0,0,0.35)] backdrop-blur">
         <nav className="mx-auto grid max-w-5xl grid-cols-6 px-1 md:px-4">
           {nav.map((n) => (
             <Link

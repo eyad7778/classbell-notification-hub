@@ -5,7 +5,6 @@ import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, fmtDate, kindLabel, PageTitle } from "@/components/app-ui";
 import { pageMeta } from "@/lib/meta";
@@ -46,9 +45,17 @@ function Content() {
     title: "",
     week: "",
     description: "",
-    external_url: "",
+    fileName: "",
+    fileUrl: "",
+    resourceType: "pdf" as "pdf" | "video" | "external" | "other",
   });
-  const [file, setFile] = useState<File | null>(null);
+  const [editingLecture, setEditingLecture] = useState<{
+    id: string;
+    title: string;
+    week: string;
+    description: string;
+    external_url: string;
+  } | null>(null);
   const [ev, setEv] = useState({
     subject_id: "",
     title: "",
@@ -69,11 +76,13 @@ function Content() {
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("all");
+  const [materialSearch, setMaterialSearch] = useState("");
+  const [lectureSearch, setLectureSearch] = useState("");
   const lectures = useQuery({
     queryKey: ["admin-lectures", view],
     enabled: !!view,
     queryFn: async () =>
-      (await supabase.from("lectures").select("*").eq("subject_id", view).order("created_at"))
+      (await supabase.from("lectures").select("*").eq("subject_id", view).order("week", { ascending: true, nullsFirst: false }).order("created_at", { ascending: true }))
         .data ?? [],
   });
   const resources = useQuery({
@@ -134,37 +143,47 @@ function Content() {
   }
   async function addLecture(e: FormEvent) {
     e.preventDefault();
-    if (!lec.subject_id || lec.title.trim().length < 2) {
-      toast.error("اختر المادة واكتب العنوان");
+    if (!lec.subject_id || lec.title.trim().length < 2 || !lec.week || !lec.fileName.trim()) {
+      toast.error("اختر المادة ورقم المحاضرة واكتب عنوانها واسم الملف");
       return;
     }
-    if (file && file.size > 50 * 1024 * 1024) {
-      toast.error("الحد الأقصى للملف 50 ميجابايت");
+    const week = Number(lec.week);
+    if (!Number.isInteger(week) || week < 1) {
+      toast.error("رقم المحاضرة يجب أن يكون رقمًا صحيحًا أكبر من صفر");
+      return;
+    }
+    let fileUrl: string;
+    try {
+      const parsed = new URL(lec.fileUrl.trim());
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error();
+      fileUrl = parsed.toString();
+    } catch {
+      toast.error("أدخل رابط ملف صالحًا يبدأ بـ https:// أو http://");
       return;
     }
     setBusy(true);
-    let filePath: string | null = null;
-    if (file) {
-      filePath = `${lec.subject_id}/${Date.now()}-${file.name.replace(/[^\w.-]/g, "_")}`;
-      const { error } = await supabase.storage.from("lectures").upload(filePath, file);
-      if (error) {
-        setBusy(false);
-        toast.error("تعذّر رفع الملف إلى مخزن المنصة");
-        return;
-      }
-    }
     const { data: createdLecture, error } = await supabase.from("lectures").insert({
       subject_id: lec.subject_id,
       title: lec.title.trim(),
-      week: lec.week ? Number(lec.week) : null,
+      week,
       description: lec.description || null,
-      external_url: lec.external_url || null,
-      file_path: filePath,
+      external_url: null,
+      file_path: null,
     }).select("id").single();
-    if (error && filePath) await supabase.storage.from("lectures").remove([filePath]);
     if (error) return void done("تمت إضافة المحاضرة", error);
-    setLec({ ...lec, title: "", week: "", description: "", external_url: "" });
-    setFile(null);
+    if (!createdLecture?.id) return void done("تمت إضافة المحاضرة", new Error("missing lecture id"));
+    const { error: resourceError } = await supabase.from("lecture_resources").insert({
+      lecture_id: createdLecture.id,
+      name: lec.fileName.trim(),
+      url: fileUrl,
+      resource_type: lec.resourceType,
+      drive_file_id: googleDriveId(fileUrl),
+    });
+    if (resourceError) {
+      await supabase.from("lectures").delete().eq("id", createdLecture.id);
+      return void done("تمت إضافة المحاضرة", resourceError);
+    }
+    setLec({ ...lec, title: "", week: "", description: "", fileName: "", fileUrl: "" });
     qc.invalidateQueries();
     setBusy(false);
     toast.success("تمت إضافة المحاضرة");
@@ -287,10 +306,42 @@ function Content() {
       qc.invalidateQueries();
     }
   }
+  async function saveLectureEdit() {
+    if (!editingLecture) return;
+    const week = Number(editingLecture.week);
+    if (!editingLecture.title.trim() || !Number.isInteger(week) || week < 1) {
+      toast.error("اكتب عنوانًا ورقم محاضرة صحيحًا");
+      return;
+    }
+    const externalUrl = editingLecture.external_url.trim();
+    if (externalUrl) {
+      try {
+        const parsed = new URL(externalUrl);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error();
+      } catch {
+        toast.error("رابط المحاضرة غير صالح");
+        return;
+      }
+    }
+    const { error } = await supabase.from("lectures").update({
+      title: editingLecture.title.trim(),
+      week,
+      description: editingLecture.description.trim() || null,
+      external_url: externalUrl || null,
+    }).eq("id", editingLecture.id);
+    if (error) toast.error("تعذّر تعديل المحاضرة");
+    else {
+      toast.success("تم تعديل المحاضرة");
+      setEditingLecture(null);
+      qc.invalidateQueries();
+    }
+  }
   async function delLecture(id: string, path: string | null) {
     if (!confirm("حذف المحاضرة؟")) return;
+    const { error } = await supabase.from("lectures").delete().eq("id", id);
+    if (error) return toast.error("تعذّر حذف المحاضرة");
     if (path) await supabase.storage.from("lectures").remove([path]);
-    await supabase.from("lectures").delete().eq("id", id);
+    toast.success("تم حذف المحاضرة وملفات روابطها");
     qc.invalidateQueries();
   }
   async function delRow(table: "events" | "subjects", id: string) {
@@ -466,7 +517,7 @@ function Content() {
           </form>
         </Card>
         <Card>
-          <h2 className="font-bold">محاضرة / ملف</h2>
+          <h2 className="font-bold">إضافة محاضرة</h2>
           <form onSubmit={addLecture} className="mt-3 space-y-2">
             <select
               className={sel}
@@ -477,13 +528,17 @@ function Content() {
               {opts}
             </select>
             <Input
-              placeholder="العنوان"
+              placeholder="عنوان المحاضرة"
+              required
+              maxLength={180}
               value={lec.title}
               onChange={(e) => setLec({ ...lec, title: e.target.value })}
             />
             <Input
               type="number"
-              placeholder="رقم الأسبوع"
+              placeholder="رقم المحاضرة"
+              min={1}
+              required
               value={lec.week}
               onChange={(e) => setLec({ ...lec, week: e.target.value })}
             />
@@ -493,31 +548,36 @@ function Content() {
               onChange={(e) => setLec({ ...lec, description: e.target.value })}
             />
             <Input
-              dir="ltr"
-              placeholder="رابط خارجي (اختياري)"
-              value={lec.external_url}
-              onChange={(e) => setLec({ ...lec, external_url: e.target.value })}
+              placeholder="اسم الملف الظاهر للطالب"
+              value={lec.fileName}
+              onChange={(e) => setLec({ ...lec, fileName: e.target.value })}
+              required
+              maxLength={180}
             />
-            <details className="rounded-md border p-3">
-              <summary className="cursor-pointer text-sm font-medium">
-                رفع قديم إلى مساحة المنصة (اختياري)
-              </summary>
-              <p className="mt-2 text-xs text-muted-foreground">
-                استخدمه للتوافق مع الملفات الحالية فقط؛ روابط Drive هي المسار المفضل للموارد
-                الجديدة.
-              </p>
-              <Label className="mt-2 block text-xs">ملف بحد أقصى 50 ميجابايت</Label>
-              <Input
-                type="file"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="mt-2"
-              />
-            </details>
+            <Input
+              dir="ltr"
+              placeholder="رابط Google Drive أو الملف"
+              value={lec.fileUrl}
+              onChange={(e) => setLec({ ...lec, fileUrl: e.target.value })}
+              required
+              type="url"
+            />
+            <select
+              className={sel}
+              aria-label="نوع الملف"
+              value={lec.resourceType}
+              onChange={(e) => setLec({ ...lec, resourceType: e.target.value as typeof lec.resourceType })}
+            >
+              <option value="pdf">ملف PDF</option>
+              <option value="video">فيديو</option>
+              <option value="external">رابط خارجي</option>
+              <option value="other">ملف آخر</option>
+            </select>
             <p className="text-xs text-muted-foreground">
-              أضف الملفات الجديدة كرابط في نموذج الموارد أدناه. الملفات القديمة تظل متاحة.
+              الملفات تبقى على Google Drive أو الاستضافة الخارجية؛ المنصة تحفظ الاسم والرابط فقط.
             </p>
             <Button disabled={busy} className="w-full">
-              إضافة
+              حفظ المحاضرة
             </Button>
           </form>
         </Card>
@@ -668,7 +728,14 @@ function Content() {
       </Card>
 
       <Card className="mt-4">
-        <h2 className="font-bold">المواد</h2>
+        <h2 className="font-bold">إدارة المحتوى السابق</h2>
+        <p className="mt-1 text-sm text-muted-foreground">اختر القسم والمادة لمراجعة المحاضرات وملفاتها وترتيبها.</p>
+        <Input
+          className="mt-3"
+          placeholder="ابحث عن مادة"
+          value={materialSearch}
+          onChange={(e) => setMaterialSearch(e.target.value)}
+        />
         <select
           className={`${sel} mt-2 max-w-xs`}
           value={subjectFilter}
@@ -685,6 +752,7 @@ function Content() {
         <ul className="mt-2 divide-y text-sm">
           {(subjects.data ?? [])
             .filter((subject) => subjectFilter === "all" || subject.department_id === subjectFilter)
+            .filter((subject) => subject.name.toLowerCase().includes(materialSearch.trim().toLowerCase()))
             .map((s) => (
               <li key={s.id} className="py-2">
                 <div className="flex items-center justify-between gap-2">
@@ -725,37 +793,59 @@ function Content() {
                   </Button>
                 </div>
                 {view === s.id && (
-                  <ul className="mt-2 space-y-1 ps-4 text-xs">
-                    {(lectures.data ?? []).length === 0 && (
+                  <div className="mt-3 space-y-2">
+                  <Input
+                    placeholder="ابحث عن محاضرة أو ملف"
+                    value={lectureSearch}
+                    onChange={(e) => setLectureSearch(e.target.value)}
+                  />
+                  <ul className="space-y-2 ps-2 text-sm">
+                    {(lectures.data ?? []).filter((lecture) => {
+                      const term = lectureSearch.trim().toLowerCase();
+                      const names = (resources.data ?? [])
+                        .filter((item) => item.lecture_id === lecture.id)
+                        .map((item) => item.name.toLowerCase());
+                      return !term || lecture.title.toLowerCase().includes(term) || names.some((name) => name.includes(term));
+                    }).length === 0 && (
                       <li className="text-muted-foreground">لا محاضرات</li>
                     )}
-                    {(lectures.data ?? []).map((l) => (
-                      <li key={l.id} className="py-2">
-                        <div className="flex items-center justify-between gap-2">
-                          {l.title}
-                          {l.file_path ? " · ملف محفوظ" : ""}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => delLecture(l.id, l.file_path)}
-                          >
-                            حذف المحاضرة
-                          </Button>
+                    {(lectures.data ?? []).filter((lecture) => {
+                      const term = lectureSearch.trim().toLowerCase();
+                      const names = (resources.data ?? [])
+                        .filter((item) => item.lecture_id === lecture.id)
+                        .map((item) => item.name.toLowerCase());
+                      return !term || lecture.title.toLowerCase().includes(term) || names.some((name) => name.includes(term));
+                    }).map((l) => (
+                      <li key={l.id} className="rounded-lg border p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-semibold">المحاضرة {l.week ?? "—"}: {l.title}{l.file_path ? " · ملف قديم مرفوع" : ""}</span>
+                          <div className="flex flex-wrap gap-1">
+                            <Button size="sm" variant="outline" onClick={() => setEditingLecture({
+                              id: l.id, title: l.title, week: String(l.week ?? ""), description: l.description ?? "",
+                              external_url: l.external_url ?? "",
+                            })}>تعديل</Button>
+                            <Button size="sm" variant="destructive" onClick={() => delLecture(l.id, l.file_path)}>حذف المحاضرة</Button>
+                          </div>
                         </div>
-                        <ul className="mt-1 space-y-1 ps-4 text-xs text-muted-foreground">
+                        {editingLecture?.id === l.id && (
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            <Input placeholder="عنوان المحاضرة" value={editingLecture.title} onChange={(e) => setEditingLecture({ ...editingLecture, title: e.target.value })} />
+                            <Input type="number" min={1} placeholder="رقم المحاضرة" value={editingLecture.week} onChange={(e) => setEditingLecture({ ...editingLecture, week: e.target.value })} />
+                            <Input className="sm:col-span-2" placeholder="وصف المحاضرة" value={editingLecture.description} onChange={(e) => setEditingLecture({ ...editingLecture, description: e.target.value })} />
+                            <Input className="sm:col-span-2" type="url" placeholder="رابط المحاضرة القديم (اختياري)" value={editingLecture.external_url} onChange={(e) => setEditingLecture({ ...editingLecture, external_url: e.target.value })} />
+                            <Button size="sm" onClick={saveLectureEdit}>حفظ التعديل</Button>
+                            <Button size="sm" variant="outline" onClick={() => setEditingLecture(null)}>إلغاء</Button>
+                          </div>
+                        )}
+                        <ul className="mt-2 space-y-2 border-t pt-2 text-xs text-muted-foreground">
                           {(resources.data ?? [])
                             .filter((item) => item.lecture_id === l.id)
                             .map((item) => (
                               <li key={item.id} className="flex flex-wrap items-center gap-2">
-                                <a
-                                  href={item.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-primary underline"
-                                >
-                                  {item.name}
-                                </a>
+                                <span className="font-medium text-foreground">{item.name}</span>
+                                <span className="max-w-full truncate" dir="ltr">{item.url}</span>
                                 <span>{item.resource_type}</span>
+                                <time>{fmtDate(item.created_at, true)}</time>
                                 <Button
                                   size="sm"
                                   variant="ghost"
@@ -776,6 +866,7 @@ function Content() {
                       </li>
                     ))}
                   </ul>
+                  </div>
                 )}
               </li>
             ))}

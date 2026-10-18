@@ -24,6 +24,7 @@ export function effectiveStatus(
 export function useMe() {
   return useQuery({
     queryKey: ["me"],
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       const id = u.user?.id;

@@ -6,7 +6,6 @@ import {
   CalendarClock,
   ChevronLeft,
   CircleAlert,
-  ExternalLink,
   FileText,
   Megaphone,
 } from "lucide-react";
@@ -84,7 +83,7 @@ function StudentHome() {
         notifications,
         notificationReads,
         announcementReads,
-        resourceRows,
+        latestLectures,
       ] = await Promise.all([
         supabase
           .from("announcements")
@@ -110,18 +109,11 @@ function StudentHome() {
         supabase.from("notification_reads").select("notification_id").eq("user_id", userId!),
         supabase.from("announcement_reads").select("announcement_id").eq("user_id", userId!),
         supabase
-          .from("lecture_resources")
-          .select("*")
+          .from("lectures")
+          .select("id, title, week, subject_id, created_at, subjects(name)")
           .order("created_at", { ascending: false })
           .limit(4),
       ]);
-      const lectureIds = (resourceRows.data ?? []).map((resource) => resource.lecture_id);
-      const { data: lectures } = lectureIds.length
-        ? await supabase
-            .from("lectures")
-            .select("id, title, subject_id, subjects(name)")
-            .in("id", lectureIds)
-        : { data: [] };
       const readIds = new Set((notificationReads.data ?? []).map((item) => item.notification_id));
       const announcementReadIds = new Set(
         (announcementReads.data ?? []).map((item) => item.announcement_id),
@@ -137,10 +129,7 @@ function StudentHome() {
           ...item,
           read: readIds.has(item.id),
         })),
-        resources: (resourceRows.data ?? []).map((resource) => ({
-          ...resource,
-          lecture: (lectures ?? []).find((lecture) => lecture.id === resource.lecture_id),
-        })),
+        latestLectures: latestLectures.data ?? [],
       };
     },
   });
@@ -439,7 +428,7 @@ function StudentHome() {
             <section>
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="flex items-center gap-2 text-lg font-bold">
-                  <FileText className="size-5 text-primary" /> {t("أحدث الموارد", "Latest resources")}
+                  <FileText className="size-5 text-primary" /> {t("أحدث المحاضرات", "Latest lectures")}
                 </h2>
                 <Link to="/app/subjects" className="text-sm text-primary">
                   {t("المواد", "Subjects")}
@@ -447,24 +436,24 @@ function StudentHome() {
               </div>
               <div className="rounded-xl border bg-card px-4">
                 <ul className="divide-y">
-                  {!feed.data?.resources.length && (
+                  {!feed.data?.latestLectures.length && (
                     <li className="py-3 text-sm text-muted-foreground">
-                      {t("لا توجد ملفات أو روابط جديدة بعد.", "No new files or links yet.")}
+                      {t("لا توجد محاضرات جديدة بعد.", "No new lectures yet.")}
                     </li>
                   )}
-                  {feed.data?.resources.map((resource) => (
-                    <li key={resource.id} className="flex items-center justify-between gap-3 py-3">
+                  {feed.data?.latestLectures.map((lecture) => (
+                    <li key={lecture.id} className="flex min-w-0 items-center justify-between gap-3 py-3">
                       <div className="min-w-0">
-                        <p className="truncate font-semibold">{resource.name}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {resource.lecture?.title} ·{" "}
-                          {(resource.lecture?.subjects as { name: string } | null)?.name}
+                        <p className="truncate font-semibold">{lecture.title}</p>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {(lecture.subjects as { name: string } | null)?.name ?? t("مادة دراسية", "Subject")}
+                          {lecture.week ? ` · الأسبوع ${lecture.week}` : ""}
                         </p>
                       </div>
-                      <Button size="sm" variant="outline" asChild>
-                        <a href={resource.url} target="_blank" rel="noreferrer">
-                          <ExternalLink className="size-4" /> {t("فتح", "Open")}
-                        </a>
+                      <Button size="sm" variant="outline" className="shrink-0" asChild>
+                        <Link to="/app/subjects/$id" params={{ id: lecture.subject_id }}>
+                          <BookOpen className="size-4" /> {t("فتح المادة", "Open subject")}
+                        </Link>
                       </Button>
                     </li>
                   ))}

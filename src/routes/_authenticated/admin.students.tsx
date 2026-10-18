@@ -34,6 +34,7 @@ function Students() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<string>("all");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
+  const [subscriptionEnds, setSubscriptionEnds] = useState<Record<string, string>>({});
   const [staffEditor, setStaffEditor] = useState<{ userId: string; name: string; permissions: StaffPermission[] } | null>(null);
   const [academic, setAcademic] = useState<Record<string, { departmentId: string; level: string }>>(
     {},
@@ -98,9 +99,9 @@ function Students() {
       (filter === "all" || x.status === filter) &&
       (departmentFilter === "all" || x.department_id === departmentFilter) &&
       (!search ||
-        x.full_name.includes(search) ||
-        x.phone.includes(search) ||
-        (x.student_code ?? "").includes(search)),
+        x.full_name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()) ||
+        x.phone.includes(search.trim()) ||
+        (x.student_code ?? "").toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())),
   );
   return (
     <div>
@@ -108,7 +109,7 @@ function Students() {
       <div className="mb-4 flex flex-wrap gap-2">
         <Input
           className="max-w-xs"
-          placeholder="بحث بالاسم أو الهاتف"
+          placeholder="بحث بالاسم أو الكود أو الهاتف"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -187,6 +188,10 @@ function Students() {
                   {statusLabel[x.status].text}
                 </span>
               </div>
+              <details className="mt-3 border-t pt-2">
+                <summary className="min-h-10 cursor-pointer py-2 text-sm font-semibold text-primary">
+                  تفاصيل الطالب وإدارة الحساب
+                </summary>
               {x.registration_status === "pending" && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {x.id_card_path && (
@@ -268,18 +273,34 @@ function Students() {
                 </Button>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {(me.data?.isOwner || me.data?.permissions.includes("payments")) && x.status !== "active" && (
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      run(
-                        () => setStatus({ data: { userId: x.id, status: "active" } }),
-                        "تم التفعيل",
-                      )
-                    }
-                  >
-                    تفعيل
-                  </Button>
+                {(me.data?.isOwner || me.data?.permissions.includes("payments")) && (
+                  <>
+                    <label className="min-w-40 flex-1 space-y-1 text-xs font-medium">
+                      تاريخ انتهاء الاشتراك
+                      <Input
+                        type="date"
+                        min={new Date().toISOString().slice(0, 10)}
+                        value={subscriptionEnds[x.id] ?? (x.end_at ? new Date(x.end_at).toISOString().slice(0, 10) : "")}
+                        onChange={(event) => setSubscriptionEnds({ ...subscriptionEnds, [x.id]: event.target.value })}
+                      />
+                    </label>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        const endDate = subscriptionEnds[x.id];
+                        run(
+                          () => setStatus({ data: {
+                            userId: x.id,
+                            status: "active",
+                            ...(endDate ? { endAt: new Date(`${endDate}T23:59:59`).toISOString() } : {}),
+                          } }),
+                          x.status === "active" ? "تم تجديد الاشتراك وتحديث تاريخ الانتهاء" : "تم تفعيل الاشتراك",
+                        );
+                      }}
+                    >
+                      {x.status === "active" ? "حفظ / تجديد الاشتراك" : "تفعيل الاشتراك"}
+                    </Button>
+                  </>
                 )}
                 {(me.data?.isOwner || me.data?.permissions.includes("payments")) && x.status === "active" && (
                   <Button
@@ -382,6 +403,7 @@ function Students() {
                   </div>
                 </div>
               )}
+              </details>
             </Card>
           ))}
         </div>

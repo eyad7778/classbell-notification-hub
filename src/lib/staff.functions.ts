@@ -295,6 +295,7 @@ export const setSubscriptionStatus = createServerFn({ method: "POST" })
         userId: z.string().uuid(),
         status: z.enum(["active", "suspended", "expired", "awaiting_payment"]),
         note: z.string().max(300).optional(),
+        endAt: z.string().datetime().optional(),
       })
       .parse(d),
   )
@@ -319,22 +320,26 @@ export const setSubscriptionStatus = createServerFn({ method: "POST" })
       }
     }
     const patch: {
+      user_id: string;
       status: typeof data.status;
       start_at?: string;
       end_at?: string;
       activated_by?: string;
       activated_at?: string;
-    } = { status: data.status };
+    } = { user_id: data.userId, status: data.status };
     if (data.status === "active") {
       const now = new Date();
+      const endAt = data.endAt ? new Date(data.endAt) : new Date(now.getTime() + 365 * 86_400_000);
+      if (!Number.isFinite(endAt.getTime()) || endAt <= now)
+        throw new Error("تاريخ انتهاء الاشتراك يجب أن يكون في المستقبل");
       patch.start_at = now.toISOString();
-      patch.end_at = new Date(
-        now.getTime() + 365 * 86_400_000,
-      ).toISOString();
+      patch.end_at = endAt.toISOString();
       patch.activated_by = context.userId;
       patch.activated_at = now.toISOString();
     }
-    const { error } = await admin.from("subscriptions").update(patch).eq("user_id", data.userId);
+    const { error } = await admin
+      .from("subscriptions")
+      .upsert(patch, { onConflict: "user_id" });
     if (error) throw new Error("تعذّر تحديث الاشتراك");
     await admin
       .from("subscription_events")
