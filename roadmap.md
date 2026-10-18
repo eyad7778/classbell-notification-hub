@@ -1,5 +1,5 @@
 # Smart Student roadmap
-- [ ] Diagnose and fix the account creation error; verify signup with real input.
+- [ ] Account creation: hosted settings require email confirmation for synthetic phone emails; blocked on disabling Confirm email in the external auth dashboard. Real signup reproduced email-send rate limiting.
 - [x] Vercel migration: prepare external deployment configuration and migration instructions.
 - [ ] Vercel connection and live verification: blocked on restoring the Cloud export into a user-owned external backend and adding its environment variables in Vercel.
 - [x] Phase 1: design system, public pages, phone auth, full database + RLS, seed data
