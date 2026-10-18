@@ -1,8 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, ExternalLink, FileDown } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, Eye, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/use-me";
 import {
@@ -23,19 +31,71 @@ export const Route = createFileRoute("/_authenticated/app/subjects/$id")({
   component: SubjectPage,
 });
 
-export async function openFile(path: string) {
-  const { data, error } = await supabase.storage.from("lectures").createSignedUrl(path, 300);
-  if (error || !data) {
-    toast.error("تعذّر فتح الملف");
-    return;
+type Viewer = { title: string; url: string; kind: "frame" | "image" | "video" };
+
+function inAppUrl(rawUrl: string) {
+  const url = new URL(rawUrl);
+  if (url.protocol !== "https:" && url.protocol !== "http:")
+    throw new Error("رابط غير صالح");
+  if (url.protocol === "http:") url.protocol = "https:";
+
+  const host = url.hostname.toLowerCase();
+  const driveId = url.pathname.match(/\/d\/([^/]+)/)?.[1] ?? url.searchParams.get("id");
+  if (host === "drive.google.com" && driveId)
+    return `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/preview`;
+  if (host === "docs.google.com" && driveId) {
+    if (url.pathname.includes("/presentation/"))
+      return `https://docs.google.com/presentation/d/${encodeURIComponent(driveId)}/embed`;
+    if (url.pathname.includes("/spreadsheets/"))
+      return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(driveId)}/preview`;
+    return `https://docs.google.com/document/d/${encodeURIComponent(driveId)}/preview`;
   }
-  window.open(data.signedUrl, "_blank", "noopener");
+  if (host === "youtu.be" || host === "youtube.com" || host.endsWith(".youtube.com")) {
+    const videoId = host === "youtu.be"
+      ? url.pathname.split("/").filter(Boolean)[0]
+      : url.searchParams.get("v") ?? url.pathname.match(/\/(?:embed|shorts)\/([^/]+)/)?.[1];
+    if (videoId) return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}`;
+  }
+  if (host === "vimeo.com") {
+    const videoId = url.pathname.split("/").filter(Boolean)[0];
+    if (videoId && /^\d+$/.test(videoId)) return `https://player.vimeo.com/video/${videoId}`;
+  }
+  return url.toString();
+}
+
+function viewerKind(url: string): Viewer["kind"] {
+  const pathname = new URL(url).pathname.toLowerCase();
+  if (/\.(mp4|webm|ogv|mov)$/.test(pathname)) return "video";
+  if (/\.(png|jpe?g|gif|webp|avif)$/.test(pathname)) return "image";
+  return "frame";
 }
 
 function SubjectPage() {
   const { id } = Route.useParams();
   const me = useMe();
   const t = useText();
+  const [viewer, setViewer] = useState<Viewer | null>(null);
+  const [opening, setOpening] = useState(false);
+  async function openInApp(title: string, url: string, storagePath?: string | null) {
+    setOpening(true);
+    try {
+      let resolvedUrl = url;
+      if (storagePath) {
+        const { data, error } = await supabase.storage
+          .from("lectures")
+          .createSignedUrl(storagePath, 600);
+        if (error || !data) throw new Error("تعذّر فتح الملف");
+        resolvedUrl = data.signedUrl;
+      } else {
+        resolvedUrl = inAppUrl(url);
+      }
+      setViewer({ title, url: resolvedUrl, kind: viewerKind(resolvedUrl) });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تعذّر فتح المحتوى داخل التطبيق");
+    } finally {
+      setOpening(false);
+    }
+  }
   const q = useQuery({
     queryKey: ["subject", id],
     enabled: !!me.data?.hasAccess,
@@ -46,8 +106,9 @@ function SubjectPage() {
           .from("lectures")
           .select("*")
           .eq("subject_id", id)
-          .order("week", { nullsFirst: false })
-          .order("created_at"),
+          .order("week", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: true })
+          .order("title", { ascending: true }),
         supabase
           .from("events")
           .select("*")
@@ -119,15 +180,15 @@ function SubjectPage() {
                 </div>
                 <div className="flex gap-2">
                   {l.file_path && (
-                    <Button size="sm" onClick={() => openFile(l.file_path!)}>
-                      <FileDown className="size-4" /> {t("الملف", "File")}
+                    <Button size="sm" disabled={opening} onClick={() => void openInApp(l.title, "", l.file_path)}>
+                      {opening ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+                      {t("فتح المحاضرة", "Open lecture")}
                     </Button>
                   )}
                   {l.external_url && (
-                    <Button size="sm" variant="outline" asChild>
-                      <a href={l.external_url} target="_blank" rel="noreferrer">
-                        <ExternalLink className="size-4" /> {t("رابط", "Link")}
-                      </a>
+                    <Button size="sm" variant="outline" disabled={opening} onClick={() => void openInApp(l.title, l.external_url!)}>
+                      {opening ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+                      {t("فتح المحاضرة", "Open lecture")}
                     </Button>
                   )}
                 </div>
@@ -149,15 +210,13 @@ function SubjectPage() {
                             </span>
                           )}
                         </span>
-                        <Button size="sm" variant="outline" asChild>
-                          <a href={resource.url} target="_blank" rel="noreferrer">
-                            <ExternalLink className="size-4" />
-                            {resource.resource_type === "video"
-                              ? t("مشاهدة الفيديو", "Watch video")
-                              : resource.resource_type === "pdf"
-                                ? t("عرض الملف", "View file")
-                                : t("فتح المورد", "Open resource")}
-                          </a>
+                        <Button size="sm" variant="outline" disabled={opening} onClick={() => void openInApp(resource.name, resource.url)}>
+                          {opening ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+                          {resource.resource_type === "video"
+                            ? t("مشاهدة الفيديو", "Watch video")
+                            : resource.resource_type === "pdf"
+                              ? t("عرض الملف", "View file")
+                              : t("فتح المورد", "Open resource")}
                         </Button>
                       </li>
                     ))}
@@ -167,6 +226,32 @@ function SubjectPage() {
           ))}
         </div>
       )}
+      <Dialog open={!!viewer} onOpenChange={(open) => { if (!open) setViewer(null); }}>
+        <DialogContent className="flex h-[92dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-3 overflow-hidden p-3 sm:p-5">
+          <DialogHeader className="shrink-0 pe-8 text-start">
+            <DialogTitle>{viewer?.title}</DialogTitle>
+            <DialogDescription>يُعرض المحتوى داخل التطبيق. قد تمنع بعض المواقع تضمين صفحاتها.</DialogDescription>
+          </DialogHeader>
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-black/90">
+            {viewer?.kind === "image" ? (
+              <img src={viewer.url} alt={viewer.title} className="h-full w-full object-contain" />
+            ) : viewer?.kind === "video" ? (
+              <video src={viewer.url} controls playsInline className="h-full w-full object-contain" />
+            ) : viewer ? (
+              <iframe
+                key={viewer.url}
+                src={viewer.url}
+                title={viewer.title}
+                className="h-full w-full border-0 bg-background"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+                allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                allowFullScreen
+                referrerPolicy="no-referrer"
+              />
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
