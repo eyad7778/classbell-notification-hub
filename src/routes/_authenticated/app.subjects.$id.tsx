@@ -1,16 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { ArrowRight, Eye, File, FileText, Link2, Loader2, Video } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, Eye, File, FileText, Link2, Loader2, Video, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/use-me";
 import {
@@ -77,6 +70,11 @@ function SubjectPage() {
   const t = useText();
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [opening, setOpening] = useState(false);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!viewer) return;
+    viewerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [viewer]);
   async function openInApp(title: string, url: string, storagePath?: string | null) {
     setOpening(true);
     try {
@@ -251,31 +249,41 @@ function SubjectPage() {
           ))}
         </div>
       )}
-      <Dialog open={!!viewer} onOpenChange={(open) => { if (!open) setViewer(null); }}>
-        <DialogContent className="flex h-[92dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-3 overflow-hidden p-3 sm:p-5">
-          <DialogHeader className="shrink-0 pe-8 text-start">
-            <DialogTitle>{viewer?.title}</DialogTitle>
-            <DialogDescription>يُعرض المحتوى داخل التطبيق. قد تمنع بعض المواقع تضمين صفحاتها.</DialogDescription>
-          </DialogHeader>
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-black/90">
-            {viewer?.kind === "image" ? (
-              <img src={viewer.url} alt={viewer.title} className="h-full w-full object-contain" />
-            ) : viewer?.kind === "video" ? (
-              <video src={viewer.url} controls playsInline className="h-full w-full object-contain" />
-            ) : viewer ? (
+      {viewer && (
+        <div ref={viewerRef} className="mt-4 scroll-mt-20">
+        <Card>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">{t("المحتوى مفتوح داخل التطبيق", "Content opened in the app")}</p>
+              <h2 className="truncate font-bold">{viewer.title}</h2>
+            </div>
+            <Button variant="outline" size="icon" aria-label={t("إغلاق المحاضرة", "Close lecture")} onClick={() => setViewer(null)}>
+              <X className="size-4" />
+            </Button>
+          </div>
+          <div className="min-h-[55dvh] overflow-hidden rounded-lg border bg-muted sm:min-h-[70dvh]">
+            {viewer.kind === "image" ? (
+              <img src={viewer.url} alt={viewer.title} className="h-full max-h-[75dvh] w-full object-contain" />
+            ) : viewer.kind === "video" ? (
+              <video src={viewer.url} controls playsInline className="h-full max-h-[75dvh] w-full bg-black object-contain" />
+            ) : (
               <iframe
                 key={viewer.url}
                 src={viewer.url}
                 title={viewer.title}
-                className="h-full w-full border-0 bg-background"
+                className="h-[55dvh] w-full border-0 bg-background sm:h-[70dvh]"
                 allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
                 allowFullScreen
                 referrerPolicy="no-referrer"
               />
-            ) : null}
+            )}
           </div>
-        </DialogContent>
-      </Dialog>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t("إذا لم يعرض الموقع المحتوى، فقد لا يسمح بفتحه داخل صفحات أخرى.", "Some providers block displaying content inside other pages.")}
+          </p>
+        </Card>
+        </div>
+      )}
     </div>
   );
 }
