@@ -34,7 +34,8 @@ export const Route = createFileRoute("/_authenticated/app/subjects/$id")({
 type Viewer = { title: string; url: string; kind: "frame" | "image" | "video" };
 
 function inAppUrl(rawUrl: string) {
-  const url = new URL(rawUrl);
+  const value = rawUrl.trim();
+  const url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}`);
   if (url.protocol !== "https:" && url.protocol !== "http:")
     throw new Error("رابط غير صالح");
   if (url.protocol === "http:") url.protocol = "https:";
@@ -116,14 +117,18 @@ function SubjectPage() {
           .gte("starts_at", new Date().toISOString())
           .order("starts_at"),
       ]);
+      if (s.error) throw s.error;
+      if (l.error) throw l.error;
+      if (e.error) throw e.error;
       const lectureIds = (l.data ?? []).map((lecture) => lecture.id);
-      const { data: resources } = lectureIds.length
+      const { data: resources, error: resourceError } = lectureIds.length
         ? await supabase
             .from("lecture_resources")
             .select("*")
             .in("lecture_id", lectureIds)
             .order("created_at", { ascending: false })
-        : { data: [] };
+        : { data: [], error: null };
+      if (resourceError) throw resourceError;
       return {
         subject: s.data,
         lectures: l.data ?? [],
@@ -136,6 +141,15 @@ function SubjectPage() {
   if (!me.data?.hasAccess)
     return <AccessGate status={me.data?.status ?? "awaiting_payment"} linked={!!me.data?.tg} />;
   if (q.isLoading) return <Loading />;
+  if (q.isError)
+    return (
+      <div>
+        <ErrorBox text="تعذّر تحميل محاضرات المادة. تحقق من اتصالك ثم أعد المحاولة." />
+        <Button className="mt-3" variant="outline" onClick={() => void q.refetch()}>
+          إعادة تحميل المحاضرات
+        </Button>
+      </div>
+    );
   if (!q.data?.subject) return <ErrorBox text={t("المادة غير موجودة.", "Subject not found.")} />;
   const { subject, lectures, events, resources } = q.data;
   return (
@@ -171,7 +185,7 @@ function SubjectPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="font-bold">
-                    {l.week ? `الأسبوع ${l.week} · ` : ""}
+                    {l.week ? `المحاضرة ${l.week} · ` : ""}
                     {l.title}
                   </p>
                   {l.description && (
