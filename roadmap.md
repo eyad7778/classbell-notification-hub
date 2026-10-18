@@ -1,5 +1,6 @@
 # Smart Student roadmap
-- [ ] Device push persistence: blocked on replacing the rejected server service credential (HTTP 401, Unregistered API key); authenticated save and delivery remain unverified.
+- [x] Replace rejected push service credential; new encrypted credential successfully reads push storage (HTTP 200).
+- [ ] Verify authenticated device connection and background delivery: blocked on a real student session/device; external unmanaged auth cannot supply a preview session.
 - [x] Classify push storage failures and prevent an unsaved browser subscription from appearing connected after reload.
 - [ ] Account creation: hosted settings require email confirmation for synthetic phone emails; blocked on disabling Confirm email in the external auth dashboard. Real signup reproduced email-send rate limiting.
 - [x] Clarify signup failures and confirmation-required results; always release the submission button after connection errors.
