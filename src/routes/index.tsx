@@ -22,6 +22,14 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
+function whatsappHref(value: string) {
+  const phone = value.trim();
+  if (/^https?:\/\//i.test(phone)) return phone;
+  let digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("0")) digits = `20${digits.slice(1)}`;
+  return digits ? `https://wa.me/${digits}` : "#";
+}
+
 const features = [
   { icon: Megaphone, title: ["الإعلانات أولًا بأول", "Updates as they happen"], text: ["أخبار وإعلانات منظّمة بدل البحث في عشرات المجموعات.", "Stay on top of organized notices without searching through group chats."] },
   { icon: BookOpen, title: ["المواد والمحاضرات", "Subjects and lectures"], text: ["ملفات كل مادة مرتبة حسب الأسبوع وجاهزة للتحميل.", "Find lecture files organized by subject and week."] },
@@ -192,9 +200,9 @@ function Index() {
           <h2 className="text-2xl font-bold text-primary-foreground md:text-3xl">{english ? "Need help?" : "تحتاج مساعدة؟"}</h2>
           <p className="mt-2 opacity-80">{english ? "Contact support with questions about your account or subscription." : "فريق الدعم متاح للرد على استفساراتك حول الحساب والاشتراك."}</p>
           <div className="mt-6 flex flex-wrap gap-3 text-sm">
-            {s?.support_phone && <span className="rounded-lg bg-primary-foreground/10 px-3 py-2" dir="ltr">{s.support_phone}</span>}
-            {s?.support_email && <span className="rounded-lg bg-primary-foreground/10 px-3 py-2" dir="ltr">{s.support_email}</span>}
-            {s?.support_telegram && <span className="rounded-lg bg-primary-foreground/10 px-3 py-2" dir="ltr">{s.support_telegram}</span>}
+            {s?.support_phone && <a href={whatsappHref(s.support_phone)} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-primary-foreground/10 px-3 py-2 transition hover:bg-primary-foreground/20" dir="ltr">واتساب · {s.support_phone}</a>}
+            {s?.support_email && <a href={`mailto:${s.support_email}`} className="rounded-lg bg-primary-foreground/10 px-3 py-2 transition hover:bg-primary-foreground/20" dir="ltr">{s.support_email}</a>}
+            {s?.support_telegram && <a href={/^https?:\/\//i.test(s.support_telegram) ? s.support_telegram : `https://t.me/${s.support_telegram.replace(/^@/, "")}`} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-primary-foreground/10 px-3 py-2 transition hover:bg-primary-foreground/20" dir="ltr">{s.support_telegram}</a>}
             {!s?.support_phone && !s?.support_email && !s?.support_telegram && (
               <span className="opacity-70">ستُضاف بيانات التواصل قريبًا من الإدارة.</span>
             )}
