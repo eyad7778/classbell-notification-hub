@@ -1,4 +1,8 @@
 # Smart Student roadmap
+- [ ] Require signup ID image and first–fourth academic year, with resumable identity upload.
+- [ ] Require transfer receipt image and delete verification images automatically after the relevant approval.
+- [ ] Add owner-controlled scoped employee permissions, enforced in server functions and database policies.
+- [ ] Apply external backend migration and verify real signup, reviews and staff permissions; external deployment requires backend changes.
 - [x] Telegram: accept the external service credential override and distinguish token storage errors from invalid tokens; 11 targeted tests passed.
 - [x] Telegram: verified authenticated webhook reachability (HTTP 200) and registered https://smartstudent-gilt.vercel.app/api/public/telegram/webhook; Telegram confirmed the destination without pending errors.
 - [ ] Telegram: verify a fresh student link end-to-end; blocked on the student's retry with their real Telegram account.
