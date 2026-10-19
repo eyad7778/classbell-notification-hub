@@ -26,9 +26,9 @@ import { Route as AuthenticatedAppIndexRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedAppAnnouncementsRouteImport } from './routes/_authenticated/app.announcements'
 import { Route as AuthenticatedAppNotificationsRouteImport } from './routes/_authenticated/app.notifications'
 import { Route as AuthenticatedAppScheduleRouteImport } from './routes/_authenticated/app.schedule'
-import { Route as AuthenticatedAppSubjectsRouteImport } from './routes/_authenticated/app.subjects'
 import { Route as AuthenticatedAppSubscriptionRouteImport } from './routes/_authenticated/app.subscription'
 import { Route as AuthenticatedAppTelegramRouteImport } from './routes/_authenticated/app.telegram'
+import { Route as AuthenticatedAppSubjectsIndexRouteImport } from './routes/_authenticated/app.subjects.index'
 import { Route as AuthenticatedAppSubjectsIdRouteImport } from './routes/_authenticated/app.subjects.$id'
 import { Route as ApiPublicTelegramWebhookRouteImport } from './routes/api/public/telegram/webhook'
 
@@ -123,12 +123,6 @@ const AuthenticatedAppScheduleRoute =
     path: '/schedule',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
-const AuthenticatedAppSubjectsRoute =
-  AuthenticatedAppSubjectsRouteImport.update({
-    id: '/subjects',
-    path: '/subjects',
-    getParentRoute: () => AuthenticatedAppRoute,
-  } as any)
 const AuthenticatedAppSubscriptionRoute =
   AuthenticatedAppSubscriptionRouteImport.update({
     id: '/subscription',
@@ -141,11 +135,17 @@ const AuthenticatedAppTelegramRoute =
     path: '/telegram',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const AuthenticatedAppSubjectsIndexRoute =
+  AuthenticatedAppSubjectsIndexRouteImport.update({
+    id: '/subjects/',
+    path: '/subjects/',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppSubjectsIdRoute =
   AuthenticatedAppSubjectsIdRouteImport.update({
-    id: '/$id',
-    path: '/$id',
-    getParentRoute: () => AuthenticatedAppSubjectsRoute,
+    id: '/subjects/$id',
+    path: '/subjects/$id',
+    getParentRoute: () => AuthenticatedAppRoute,
   } as any)
 const ApiPublicTelegramWebhookRoute =
   ApiPublicTelegramWebhookRouteImport.update({
@@ -169,13 +169,13 @@ export interface FileRoutesByFullPath {
   '/app/announcements': typeof AuthenticatedAppAnnouncementsRoute
   '/app/notifications': typeof AuthenticatedAppNotificationsRoute
   '/app/schedule': typeof AuthenticatedAppScheduleRoute
-  '/app/subjects': typeof AuthenticatedAppSubjectsRouteWithChildren
   '/app/subscription': typeof AuthenticatedAppSubscriptionRoute
   '/app/telegram': typeof AuthenticatedAppTelegramRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/app/': typeof AuthenticatedAppIndexRoute
   '/app/subjects/$id': typeof AuthenticatedAppSubjectsIdRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
+  '/app/subjects/': typeof AuthenticatedAppSubjectsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -190,13 +190,13 @@ export interface FileRoutesByTo {
   '/app/announcements': typeof AuthenticatedAppAnnouncementsRoute
   '/app/notifications': typeof AuthenticatedAppNotificationsRoute
   '/app/schedule': typeof AuthenticatedAppScheduleRoute
-  '/app/subjects': typeof AuthenticatedAppSubjectsRouteWithChildren
   '/app/subscription': typeof AuthenticatedAppSubscriptionRoute
   '/app/telegram': typeof AuthenticatedAppTelegramRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/app': typeof AuthenticatedAppIndexRoute
   '/app/subjects/$id': typeof AuthenticatedAppSubjectsIdRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
+  '/app/subjects': typeof AuthenticatedAppSubjectsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -215,13 +215,13 @@ export interface FileRoutesById {
   '/_authenticated/app/announcements': typeof AuthenticatedAppAnnouncementsRoute
   '/_authenticated/app/notifications': typeof AuthenticatedAppNotificationsRoute
   '/_authenticated/app/schedule': typeof AuthenticatedAppScheduleRoute
-  '/_authenticated/app/subjects': typeof AuthenticatedAppSubjectsRouteWithChildren
   '/_authenticated/app/subscription': typeof AuthenticatedAppSubscriptionRoute
   '/_authenticated/app/telegram': typeof AuthenticatedAppTelegramRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/app/': typeof AuthenticatedAppIndexRoute
   '/_authenticated/app/subjects/$id': typeof AuthenticatedAppSubjectsIdRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
+  '/_authenticated/app/subjects/': typeof AuthenticatedAppSubjectsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -240,13 +240,13 @@ export interface FileRouteTypes {
     | '/app/announcements'
     | '/app/notifications'
     | '/app/schedule'
-    | '/app/subjects'
     | '/app/subscription'
     | '/app/telegram'
     | '/admin/'
     | '/app/'
     | '/app/subjects/$id'
     | '/api/public/telegram/webhook'
+    | '/app/subjects/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -261,13 +261,13 @@ export interface FileRouteTypes {
     | '/app/announcements'
     | '/app/notifications'
     | '/app/schedule'
-    | '/app/subjects'
     | '/app/subscription'
     | '/app/telegram'
     | '/admin'
     | '/app'
     | '/app/subjects/$id'
     | '/api/public/telegram/webhook'
+    | '/app/subjects'
   id:
     | '__root__'
     | '/'
@@ -285,13 +285,13 @@ export interface FileRouteTypes {
     | '/_authenticated/app/announcements'
     | '/_authenticated/app/notifications'
     | '/_authenticated/app/schedule'
-    | '/_authenticated/app/subjects'
     | '/_authenticated/app/subscription'
     | '/_authenticated/app/telegram'
     | '/_authenticated/admin/'
     | '/_authenticated/app/'
     | '/_authenticated/app/subjects/$id'
     | '/api/public/telegram/webhook'
+    | '/_authenticated/app/subjects/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -425,13 +425,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppScheduleRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
-    '/_authenticated/app/subjects': {
-      id: '/_authenticated/app/subjects'
-      path: '/subjects'
-      fullPath: '/app/subjects'
-      preLoaderRoute: typeof AuthenticatedAppSubjectsRouteImport
-      parentRoute: typeof AuthenticatedAppRoute
-    }
     '/_authenticated/app/subscription': {
       id: '/_authenticated/app/subscription'
       path: '/subscription'
@@ -446,12 +439,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppTelegramRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/app/subjects/': {
+      id: '/_authenticated/app/subjects/'
+      path: '/subjects'
+      fullPath: '/app/subjects/'
+      preLoaderRoute: typeof AuthenticatedAppSubjectsIndexRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/app/subjects/$id': {
       id: '/_authenticated/app/subjects/$id'
-      path: '/$id'
+      path: '/subjects/$id'
       fullPath: '/app/subjects/$id'
       preLoaderRoute: typeof AuthenticatedAppSubjectsIdRouteImport
-      parentRoute: typeof AuthenticatedAppSubjectsRoute
+      parentRoute: typeof AuthenticatedAppRoute
     }
     '/api/public/telegram/webhook': {
       id: '/api/public/telegram/webhook'
@@ -482,38 +482,26 @@ const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
 const AuthenticatedAdminRouteWithChildren =
   AuthenticatedAdminRoute._addFileChildren(AuthenticatedAdminRouteChildren)
 
-interface AuthenticatedAppSubjectsRouteChildren {
-  AuthenticatedAppSubjectsIdRoute: typeof AuthenticatedAppSubjectsIdRoute
-}
-
-const AuthenticatedAppSubjectsRouteChildren: AuthenticatedAppSubjectsRouteChildren =
-  {
-    AuthenticatedAppSubjectsIdRoute: AuthenticatedAppSubjectsIdRoute,
-  }
-
-const AuthenticatedAppSubjectsRouteWithChildren =
-  AuthenticatedAppSubjectsRoute._addFileChildren(
-    AuthenticatedAppSubjectsRouteChildren,
-  )
-
 interface AuthenticatedAppRouteChildren {
   AuthenticatedAppAnnouncementsRoute: typeof AuthenticatedAppAnnouncementsRoute
   AuthenticatedAppNotificationsRoute: typeof AuthenticatedAppNotificationsRoute
   AuthenticatedAppScheduleRoute: typeof AuthenticatedAppScheduleRoute
-  AuthenticatedAppSubjectsRoute: typeof AuthenticatedAppSubjectsRouteWithChildren
   AuthenticatedAppSubscriptionRoute: typeof AuthenticatedAppSubscriptionRoute
   AuthenticatedAppTelegramRoute: typeof AuthenticatedAppTelegramRoute
   AuthenticatedAppIndexRoute: typeof AuthenticatedAppIndexRoute
+  AuthenticatedAppSubjectsIdRoute: typeof AuthenticatedAppSubjectsIdRoute
+  AuthenticatedAppSubjectsIndexRoute: typeof AuthenticatedAppSubjectsIndexRoute
 }
 
 const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppAnnouncementsRoute: AuthenticatedAppAnnouncementsRoute,
   AuthenticatedAppNotificationsRoute: AuthenticatedAppNotificationsRoute,
   AuthenticatedAppScheduleRoute: AuthenticatedAppScheduleRoute,
-  AuthenticatedAppSubjectsRoute: AuthenticatedAppSubjectsRouteWithChildren,
   AuthenticatedAppSubscriptionRoute: AuthenticatedAppSubscriptionRoute,
   AuthenticatedAppTelegramRoute: AuthenticatedAppTelegramRoute,
   AuthenticatedAppIndexRoute: AuthenticatedAppIndexRoute,
+  AuthenticatedAppSubjectsIdRoute: AuthenticatedAppSubjectsIdRoute,
+  AuthenticatedAppSubjectsIndexRoute: AuthenticatedAppSubjectsIndexRoute,
 }
 
 const AuthenticatedAppRouteWithChildren =
