@@ -8,7 +8,7 @@ import { AccessGate, Card, Empty, ErrorBox, Loading, PageTitle } from "@/compone
 import { pageMeta } from "@/lib/meta";
 import { useText } from "@/hooks/use-preferences";
 
-export const Route = createFileRoute("/_authenticated/app/subjects")({
+export const Route = createFileRoute("/_authenticated/app/subjects/")({
   head: () => pageMeta("المواد", "المواد الدراسية ومحاضراتها وملفاتها."),
   component: Subjects,
 });
