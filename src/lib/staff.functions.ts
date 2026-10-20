@@ -47,6 +47,7 @@ async function notifyUser(
     [userId],
     `<b>${escapeHtml(title)}</b>\n${escapeHtml(body)}`,
     n?.id ?? null,
+    "🔔 أرسلت المنصة تحديثًا خاصًا لأحد الطلاب. تظهر تفاصيله للطالب المعني فقط في إشعارات حسابه.",
   ).catch((e) => console.error(e));
 }
 
@@ -102,14 +103,14 @@ export const notifyNewAcademicContent = createServerFn({ method: "POST" })
       if (subjectError || !subject) throw new Error("تعذّر تحديد المادة للمحاضرة");
       departmentIds = subject.department_id ? [subject.department_id] : [];
       levels = subject.level ? [subject.level] : [];
-      title = `📚 محاضرة جديدة: ${subject.name}`;
+      title = `📚 محاضرة جديدة في ${subject.name}`;
       body = [
-        "✨ تمت إضافة محاضرة جديدة",
+        "🎉 خبر جميل! محاضرة جديدة بقت جاهزة لمذاكرتك.",
         `📖 المحاضرة: ${lecture.title}`,
         `📚 المادة: ${subject.name}`,
         lecture.week ? `🗓️ الأسبوع: ${lecture.week}` : null,
         lecture.description ? `📝 ${lecture.description}` : null,
-        "\nافتح التطبيق لمشاهدة المحاضرة والملفات.",
+        "\n💪 خطوة صغيرة كل يوم تقرّبك من هدفك. افتح التطبيق وابدأ!",
       ].filter(Boolean).join("\n").slice(0, 1200);
       link = "/app/subjects";
     } else {
@@ -131,14 +132,14 @@ export const notifyNewAcademicContent = createServerFn({ method: "POST" })
       }).format(new Date(event.starts_at));
       title = `🗓️ ${kind} جديد: ${event.title}`;
       body = [
-        "✨ تمت إضافة موعد جديد",
+        "🔔 عندك تحديث جديد يساعدك ترتّب مذاكرتك.",
         `📌 النوع: ${kind}`,
         `📝 العنوان: ${event.title}`,
         `⏰ الموعد: ${when}`,
         subjectName ? `📚 المادة: ${subjectName}` : null,
         event.location ? `📍 المكان: ${event.location}` : null,
         event.notes ? `ℹ️ ${event.notes}` : null,
-        "\nافتح التطبيق لمشاهدة تفاصيل الموعد.",
+        "\n💪 رتّب وقتك وخليك مستعد. افتح التطبيق للتفاصيل!",
       ].filter(Boolean).join("\n").slice(0, 1200);
       link = "/app/schedule";
     }
@@ -160,10 +161,40 @@ export const notifyNewAcademicContent = createServerFn({ method: "POST" })
       import("@/lib/telegram.server"),
     ]);
     const [push, telegram] = await Promise.all([
-      deliverPush(admin, ids, { title, body, url: link }),
-      deliverTelegram(admin, ids, `<b>${escapeHtml(title)}</b>\n\n${escapeHtml(body)}`, notification.id),
+      deliverPush(admin, ids, { title, body, url: link }).catch((error) => {
+        console.error("Academic content push delivery failed", error);
+        return { sent: 0, failed: ids.length, configured: false };
+      }),
+      deliverTelegram(admin, ids, `<b>${escapeHtml(title)}</b>\n\n${escapeHtml(body)}`, notification.id).catch((error) => {
+        console.error("Academic content Telegram delivery failed", error);
+        return { sent: 0, failed: ids.length, groupSent: 0, groupFailed: 1, groupConfigured: false };
+      }),
     ]);
-    return { ok: true, recipients: ids.length, pushSent: push.sent, telegramSent: telegram.sent };
+    return {
+      ok: true,
+      recipients: ids.length,
+      pushSent: push.sent,
+      pushFailed: push.failed,
+      pushConfigured: push.configured,
+      telegramSent: telegram.sent,
+      telegramFailed: telegram.failed,
+      groupSent: telegram.groupSent,
+      groupFailed: telegram.groupFailed,
+      groupConfigured: telegram.groupConfigured,
+    };
+  });
+
+export const uploadDriveFile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({
+    name: z.string().trim().min(1).max(180),
+    mimeType: z.string().max(120),
+    contentBase64: z.string().min(1).max(3_500_000),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertStaff(context as Ctx, false, "content");
+    const { uploadToGoogleDrive } = await import("@/lib/google-drive.server");
+    return uploadToGoogleDrive(data);
   });
 
 export const reviewPayment = createServerFn({ method: "POST" })
@@ -383,9 +414,10 @@ export const sendNotification = createServerFn({ method: "POST" })
       : await eligibleTargetUsers(admin, data.targetDepartmentIds, data.targetLevels);
     const { deliverPush } = await import("@/lib/push.server");
     const push = await deliverPush(admin, ids, { title: data.title, body: data.body });
-    if (!data.telegram) return { sent: 0, failed: 0, pushSent: push.sent, pushFailed: push.failed, pushConfigured: push.configured };
     const { deliverTelegram, escapeHtml } = await import("@/lib/telegram.server");
-    const telegram = await deliverTelegram(admin, ids, `<b>${escapeHtml(data.title)}</b>\n${escapeHtml(data.body)}`, n.id);
+    const message = `<b>${escapeHtml(data.title)}</b>\n${escapeHtml(data.body)}`;
+    const telegram = await deliverTelegram(admin, data.telegram ? ids : [], message, n.id);
+    if (!data.telegram) return { ...telegram, sent: 0, failed: 0, pushSent: push.sent, pushFailed: push.failed, pushConfigured: push.configured };
     return { ...telegram, pushSent: push.sent, pushFailed: push.failed, pushConfigured: push.configured };
   });
 
@@ -465,7 +497,11 @@ export const announceAndNotify = createServerFn({ method: "POST" })
       target_levels: data.targetLevels,
     });
     if (error) throw new Error("تعذّر نشر الإعلان");
-    if (!data.notify) return { sent: 0, failed: 0, pushSent: 0, pushFailed: 0, pushConfigured: false };
+    if (!data.notify) {
+      const { deliverTelegramGroup, escapeHtml } = await import("@/lib/telegram.server");
+      const group = await deliverTelegramGroup(admin, `<b>📢 ${escapeHtml(data.title)}</b>\n${escapeHtml(data.body.slice(0, 900))}`);
+      return { sent: 0, failed: 0, ...group, pushSent: 0, pushFailed: 0, pushConfigured: false };
+    }
     const { data: n, error: notificationError } = await admin
       .from("notifications")
       .insert({

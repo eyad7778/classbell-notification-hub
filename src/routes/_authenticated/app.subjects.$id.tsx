@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Eye, File, FileText, Link2, Loader2, Video, X } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, Eye, File, FileText, Link2, Loader2, Video } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,7 +17,7 @@ import {
   PageTitle,
 } from "@/components/app-ui";
 import { pageMeta } from "@/lib/meta";
-import { contentTarget, viewerKind, type ViewerKind } from "@/lib/lecture-links";
+import { contentTarget } from "@/lib/lecture-links";
 import { useText } from "@/hooks/use-preferences";
 import { QuickAddLectures } from "@/components/quick-add-lectures";
 
@@ -26,38 +26,36 @@ export const Route = createFileRoute("/_authenticated/app/subjects/$id")({
   component: SubjectPage,
 });
 
-type Viewer = { title: string; url: string; fallbackUrl: string; kind: ViewerKind };
-
 function SubjectPage() {
   const { id } = Route.useParams();
   const me = useMe();
   const t = useText();
-  const [viewer, setViewer] = useState<Viewer | null>(null);
   const [opening, setOpening] = useState(false);
-  const viewerRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!viewer) return;
-    viewerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [viewer]);
-  async function openContent(title: string, url: string, storagePath?: string | null) {
+  async function openContent(url: string, storagePath?: string | null) {
     setOpening(true);
+    let popup: Window | null = null;
     try {
       if (storagePath) {
+        popup = window.open("about:blank", "_blank");
+        if (!popup) throw new Error("اسمح بفتح النوافذ المنبثقة لفتح الملف.");
+        popup.opener = null;
         const { data, error } = await supabase.storage
           .from("lectures")
           .createSignedUrl(storagePath, 600);
         if (error || !data) throw new Error("تعذّر فتح الملف");
-        setViewer({ title, url: data.signedUrl, fallbackUrl: data.signedUrl, kind: viewerKind(data.signedUrl) });
+        popup.location.replace(data.signedUrl);
         return;
       }
       const target = contentTarget(url);
-      if (target.action === "external") {
-        window.open(target.url, "_blank", "noopener,noreferrer");
-        return;
-      }
-      setViewer({ title, url: target.url, fallbackUrl: url, kind: target.kind });
+      const destination = target.action === "external"
+        ? target.url
+        : /^[a-z][a-z\d+.-]*:\/\//i.test(url.trim())
+          ? url.trim()
+          : `https://${url.trim()}`;
+      window.open(destination, "_blank", "noopener,noreferrer");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "تعذّر فتح المحتوى داخل التطبيق");
+      popup?.close();
+      toast.error(error instanceof Error ? error.message : "تعذّر فتح المحتوى في المتصفح");
     } finally {
       setOpening(false);
     }
@@ -167,13 +165,13 @@ function SubjectPage() {
                 </div>
                 <div className="flex gap-2">
                   {l.file_path && (
-                    <Button size="sm" disabled={opening} onClick={() => void openContent(l.title, "", l.file_path)}>
+                    <Button size="sm" disabled={opening} onClick={() => void openContent("", l.file_path)}>
                       {opening ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
                       {t("فتح المحاضرة", "Open lecture")}
                     </Button>
                   )}
                   {l.external_url && (
-                    <Button size="sm" variant="outline" disabled={opening} onClick={() => void openContent(l.title, l.external_url!)}>
+                    <Button size="sm" variant="outline" disabled={opening} onClick={() => void openContent(l.external_url!)}>
                       {opening ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
                       {t("فتح المحاضرة", "Open lecture")}
                     </Button>
@@ -208,7 +206,7 @@ function SubjectPage() {
                           )}
                           </span>
                         </span>
-                        <Button size="sm" variant="outline" disabled={opening} onClick={() => void openContent(resource.name, resource.url)}>
+                        <Button size="sm" variant="outline" disabled={opening} onClick={() => void openContent(resource.url)}>
                           {opening ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
                           {resource.resource_type === "video"
                             ? t("مشاهدة الفيديو", "Watch video")
@@ -222,44 +220,6 @@ function SubjectPage() {
               )}
             </Card>
           ))}
-        </div>
-      )}
-      {viewer && (
-        <div ref={viewerRef} className="mt-4 scroll-mt-20">
-        <Card>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">{t("المحتوى مفتوح داخل التطبيق", "Content opened in the app")}</p>
-              <h2 className="truncate font-bold">{viewer.title}</h2>
-            </div>
-            <Button variant="outline" size="icon" aria-label={t("إغلاق المحاضرة", "Close lecture")} onClick={() => setViewer(null)}>
-              <X className="size-4" />
-            </Button>
-          </div>
-          <div className="min-h-[55dvh] overflow-hidden rounded-lg border bg-muted sm:min-h-[70dvh]">
-            {viewer.kind === "image" ? (
-              <img src={viewer.url} alt={viewer.title} className="h-full max-h-[75dvh] w-full object-contain" />
-            ) : viewer.kind === "video" ? (
-              <video src={viewer.url} controls playsInline className="h-full max-h-[75dvh] w-full bg-black object-contain" />
-            ) : (
-              <iframe
-                key={viewer.url}
-                src={viewer.url}
-                title={viewer.title}
-                className="h-[55dvh] w-full border-0 bg-background sm:h-[70dvh]"
-                allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-                allowFullScreen
-                referrerPolicy="no-referrer"
-              />
-            )}
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t("إذا لم يعرض الموقع المحتوى، فقد لا يسمح بفتحه داخل صفحات أخرى.", "Some providers block displaying content inside other pages.")}
-          </p>
-          <a href={viewer.fallbackUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-sm font-semibold text-primary underline">
-            {t("فتح المحتوى في تبويب جديد", "Open content in a new tab")}
-          </a>
-        </Card>
         </div>
       )}
     </div>

@@ -48,18 +48,101 @@ export function escapeHtml(s: string) {
 
 type Admin = typeof import("@/integrations/supabase/client.server")["supabaseAdmin"];
 
-/** Sends a Telegram message to linked users and records each delivery. */
-export async function deliverTelegram(admin: Admin, userIds: string[], text: string, notificationId: string | null) {
-  if (userIds.length === 0) return { sent: 0, failed: 0 };
-  const { data: links } = await admin.from("telegram_links").select("user_id, chat_id, blocked").in("user_id", userIds);
-  let sent = 0, failed = 0;
-  for (const l of links ?? []) {
-    const r = await tg("sendMessage", { chat_id: l.chat_id, text, parse_mode: "HTML", disable_web_page_preview: true });
-    const blocked = r.status === 403;
-    const status = r.ok ? "sent" : blocked ? "blocked" : "failed";
-    r.ok ? sent++ : failed++;
-    await admin.from("telegram_links").update({ last_send_status: status, last_send_at: new Date().toISOString(), blocked }).eq("user_id", l.user_id);
-    await admin.from("telegram_deliveries").insert({ user_id: l.user_id, notification_id: notificationId, status, error: r.ok ? null : r.description ?? null });
+/** Broadcasts once to the configured group, independent of individual delivery preferences. */
+export async function deliverTelegramGroup(admin: Admin, text: string) {
+  const { data: group, error } = await admin
+    .from("telegram_group_config")
+    .select("chat_id")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error) {
+    console.error("Could not load the Telegram group configuration", { code: error.code, message: error.message });
+    return { groupSent: 0, groupFailed: 1, groupConfigured: false };
   }
-  return { sent, failed };
+  if (!group) return { groupSent: 0, groupFailed: 0, groupConfigured: false };
+
+  try {
+    const response = await tg("sendMessage", {
+      chat_id: group.chat_id,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    });
+    return {
+      groupSent: response.ok ? 1 : 0,
+      groupFailed: response.ok ? 0 : 1,
+      groupConfigured: true,
+    };
+  } catch (deliveryError) {
+    console.error("Telegram group delivery failed", deliveryError);
+    return { groupSent: 0, groupFailed: 1, groupConfigured: true };
+  }
+}
+
+/** Sends a Telegram message to linked users and records each delivery. */
+export async function deliverTelegram(
+  admin: Admin,
+  userIds: string[],
+  text: string,
+  notificationId: string | null,
+  groupText = text,
+) {
+  if (userIds.length === 0) {
+    const group = await deliverTelegramGroup(admin, groupText);
+    return { sent: 0, failed: 0, ...group };
+  }
+  const { data: links, error: linksError } = await admin
+    .from("telegram_links")
+    .select("user_id, chat_id, blocked")
+    .in("user_id", userIds);
+  if (linksError) {
+    console.error("Could not load Telegram links", { code: linksError.code, message: linksError.message });
+    const group = await deliverTelegramGroup(admin, groupText);
+    return { sent: 0, failed: userIds.length, ...group };
+  }
+
+  let sent = 0, failed = 0;
+  const linkedIds = new Set((links ?? []).map((link) => link.user_id));
+  failed += userIds.filter((userId) => !linkedIds.has(userId)).length;
+  failed += (links ?? []).filter((link) => link.blocked).length;
+
+  await Promise.all((links ?? []).filter((link) => !link.blocked).map(async (link) => {
+    let status: "sent" | "blocked" | "failed" = "failed";
+    let errorText: string | null = null;
+    let blocked = false;
+    try {
+      const response = await tg("sendMessage", {
+        chat_id: link.chat_id,
+        text,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+      });
+      blocked = response.status === 403;
+      status = response.ok ? "sent" : blocked ? "blocked" : "failed";
+      errorText = response.ok ? null : response.description ?? "Telegram rejected the message";
+    } catch (error) {
+      errorText = error instanceof Error ? error.message : String(error);
+      console.error("Telegram delivery failed", { userId: link.user_id, error: errorText });
+    }
+
+    if (status === "sent") sent += 1;
+    else failed += 1;
+
+    const { error: updateError } = await admin
+      .from("telegram_links")
+      .update({ last_send_status: status, last_send_at: new Date().toISOString(), blocked })
+      .eq("user_id", link.user_id);
+    if (updateError) console.error("Could not update Telegram delivery status", updateError);
+
+    const { error: deliveryError } = await admin.from("telegram_deliveries").insert({
+      user_id: link.user_id,
+      notification_id: notificationId,
+      status,
+      error: errorText,
+    });
+    if (deliveryError) console.error("Could not record Telegram delivery", deliveryError);
+  }));
+
+  const group = await deliverTelegramGroup(admin, groupText);
+  return { sent, failed, ...group };
 }

@@ -76,6 +76,53 @@ export type Database = {
         }
         Relationships: []
       }
+      class_schedule: {
+        Row: {
+          created_at: string
+          day_of_week: number
+          ends_at: string
+          id: string
+          instructor: string | null
+          location: string | null
+          starts_at: string
+          subject_id: string
+          target_department_ids: string[]
+          target_levels: string[]
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: number
+          ends_at: string
+          id?: string
+          instructor?: string | null
+          location?: string | null
+          starts_at: string
+          subject_id: string
+          target_department_ids?: string[]
+          target_levels?: string[]
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: number
+          ends_at?: string
+          id?: string
+          instructor?: string | null
+          location?: string | null
+          starts_at?: string
+          subject_id?: string
+          target_department_ids?: string[]
+          target_levels?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_schedule_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       departments: {
         Row: {
           created_at: string
@@ -604,6 +651,30 @@ export type Database = {
           status?: Database["public"]["Enums"]["subscription_status"]
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      telegram_group_config: {
+        Row: {
+          chat_id: string
+          chat_title: string | null
+          configured_by: string | null
+          id: number
+          updated_at: string
+        }
+        Insert: {
+          chat_id: string
+          chat_title?: string | null
+          configured_by?: string | null
+          id?: number
+          updated_at?: string
+        }
+        Update: {
+          chat_id?: string
+          chat_title?: string | null
+          configured_by?: string | null
+          id?: number
+          updated_at?: string
         }
         Relationships: []
       }

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { Loader2 } from "lucide-react";
+import { Building2, GraduationCap, Hash, Loader2, Phone, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,10 +15,10 @@ import { useText } from "@/hooks/use-preferences";
 export const Route = createFileRoute("/_authenticated/app/subscription")({
   head: () => ({
     meta: [
-      { title: "الاشتراك — Smart Student" },
-      { name: "description", content: "سعر الاشتراك وطرق الدفع وحالة طلبك." },
-      { property: "og:title", content: "الاشتراك — Smart Student" },
-      { property: "og:description", content: "فعّل اشتراكك في Smart Student." },
+      { title: "حسابي — Smart Student" },
+      { name: "description", content: "بياناتك الدراسية وحالة اشتراكك." },
+      { property: "og:title", content: "حسابي — Smart Student" },
+      { property: "og:description", content: "تابع بياناتك الدراسية واشتراكك في Smart Student." },
     ],
   }),
   component: Subscription,
@@ -34,6 +34,17 @@ function Subscription() {
   const requests = useQuery({
     queryKey: ["my-payments"],
     queryFn: async () => (await supabase.from("payment_requests").select("*").order("created_at", { ascending: false }).limit(10)).data ?? [],
+  });
+  const department = useQuery({
+    queryKey: ["my-department", me.data?.profile?.department_id],
+    enabled: !!me.data?.profile?.department_id,
+    queryFn: async () => {
+      const id = me.data?.profile?.department_id;
+      if (!id) return null;
+      const { data, error } = await supabase.from("departments").select("name").eq("id", id).maybeSingle();
+      if (error) throw error;
+      return data?.name ?? null;
+    },
   });
   const [method, setMethod] = useState("");
   const [reference, setReference] = useState("");
@@ -77,7 +88,39 @@ function Subscription() {
 
   return (
     <div>
-      <PageTitle title={t("الاشتراك", "Subscription")} subtitle={t("فعّل اشتراكك للوصول إلى المحتوى الدراسي.", "Activate your subscription to access study content.")} />
+      <PageTitle title={t("حسابي", "My account")} subtitle={t("بياناتك الدراسية واشتراكك في مكان واحد.", "Your study profile and subscription in one place.")} />
+      <Card className="mb-4 overflow-hidden p-0">
+        <div className="bg-gradient-to-l from-primary to-navy p-5 text-primary-foreground sm:p-7">
+          <div className="flex items-center gap-4">
+            <div className="grid size-14 shrink-0 place-items-center rounded-2xl bg-white/15 ring-1 ring-white/20">
+              <UserRound className="size-7" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm text-white/75">{t("ملف الطالب", "Student profile")}</p>
+              <h2 className="mt-1 truncate text-xl font-bold">{me.data.profile?.full_name || t("طالب Smart Student", "Smart Student")}</h2>
+              <p className="mt-1 text-sm text-white/80">{t("بياناتك الدراسية وحسابك في مكان واحد", "Your study and account details in one place")}</p>
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex items-center gap-3 bg-card p-4">
+            <Building2 className="size-5 shrink-0 text-primary" />
+            <div className="min-w-0"><p className="text-xs text-muted-foreground">{t("التخصص / القسم", "Major / department")}</p><p className="truncate font-semibold">{department.isLoading ? t("جارٍ التحميل…", "Loading…") : department.data ?? t("غير محدد", "Not set")}</p></div>
+          </div>
+          <div className="flex items-center gap-3 bg-card p-4">
+            <GraduationCap className="size-5 shrink-0 text-primary" />
+            <div className="min-w-0"><p className="text-xs text-muted-foreground">{t("الفرقة الدراسية", "Study year")}</p><p className="truncate font-semibold">{me.data.profile?.level ?? t("غير محددة", "Not set")}</p></div>
+          </div>
+          <div className="flex items-center gap-3 bg-card p-4">
+            <Hash className="size-5 shrink-0 text-primary" />
+            <div className="min-w-0"><p className="text-xs text-muted-foreground">{t("كود الطالب", "Student ID")}</p><p className="truncate font-semibold" dir="auto">{me.data.profile?.student_code ?? "—"}</p></div>
+          </div>
+          <div className="flex items-center gap-3 bg-card p-4 sm:col-span-2 lg:col-span-3">
+            <Phone className="size-5 shrink-0 text-primary" />
+            <div className="min-w-0"><p className="text-xs text-muted-foreground">{t("رقم الهاتف", "Phone number")}</p><p className="font-semibold" dir="ltr">{me.data.profile?.phone ?? "—"}</p></div>
+          </div>
+        </div>
+      </Card>
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <p className="text-sm text-muted-foreground">{t("حالة اشتراكك", "Subscription status")}</p>

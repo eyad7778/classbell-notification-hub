@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, fmtDate, kindLabel, PageTitle } from "@/components/app-ui";
 import { pageMeta } from "@/lib/meta";
-import { notifyNewAcademicContent } from "@/lib/staff.functions";
+import { notifyNewAcademicContent, uploadDriveFile } from "@/lib/staff.functions";
 import { QuickAddLectures } from "@/components/quick-add-lectures";
 
 export const Route = createFileRoute("/_authenticated/admin/content")({
@@ -31,6 +31,7 @@ function googleDriveId(value: string) {
 function Content() {
   const qc = useQueryClient();
   const notifyContent = useServerFn(notifyNewAcademicContent);
+  const uploadDrive = useServerFn(uploadDriveFile);
   const departments = useQuery({
     queryKey: ["admin-departments"],
     queryFn: async () => (await supabase.from("departments").select("*").order("name")).data ?? [],
@@ -66,6 +67,14 @@ function Content() {
     notes: "",
     targetDepartmentIds: [] as string[],
   });
+  const [classSession, setClassSession] = useState({
+    subject_id: "",
+    day_of_week: "0",
+    starts_at: "09:00",
+    ends_at: "10:00",
+    location: "",
+    instructor: "",
+  });
   const [eventLevels, setEventLevels] = useState("");
   const [resource, setResource] = useState({
     lecture_id: "",
@@ -75,6 +84,7 @@ function Content() {
     resource_type: "pdf" as "pdf" | "video" | "external" | "other",
   });
   const [busy, setBusy] = useState(false);
+  const [driveUploadBusy, setDriveUploadBusy] = useState(false);
   const [view, setView] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [materialSearch, setMaterialSearch] = useState("");
@@ -113,6 +123,14 @@ function Content() {
           .limit(50)
       ).data ?? [],
   });
+  const classSchedule = useQuery({
+    queryKey: ["admin-class-schedule"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("class_schedule").select("*, subjects(name)").order("day_of_week").order("starts_at");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   const done = (ok: string, error: unknown) => {
     setBusy(false);
@@ -123,6 +141,34 @@ function Content() {
     }
     return !error;
   };
+
+  async function uploadLectureFile(file?: File) {
+    if (!file) return;
+    if (file.size > 2.5 * 1024 * 1024) {
+      toast.error("حجم الملف يجب ألا يتجاوز 2.5 ميغابايت.");
+      return;
+    }
+    setDriveUploadBusy(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("تعذرت قراءة الملف"));
+        reader.onerror = () => reject(new Error("تعذرت قراءة الملف"));
+        reader.readAsDataURL(file);
+      });
+      const result = await uploadDrive({ data: {
+        name: file.name,
+        mimeType: file.type || "application/octet-stream",
+        contentBase64: dataUrl.slice(dataUrl.indexOf(",") + 1),
+      } });
+      setLec((current) => ({ ...current, fileName: result.name, fileUrl: result.url }));
+      toast.success("تم رفع الملف إلى Google Drive");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تعذر رفع الملف إلى Google Drive");
+    } finally {
+      setDriveUploadBusy(false);
+    }
+  }
 
   async function addSubject(e: FormEvent) {
     e.preventDefault();
@@ -192,8 +238,10 @@ function Content() {
       try {
         const result = await notifyContent({ data: { type: "lecture", contentId: createdLecture.id } });
         if (result.recipients > 0)
-          toast.success(`📨 أُرسل إشعار المحاضرة تلقائيًا إلى ${result.recipients} طالب`);
-        else toast.info("📨 تم حفظ الإشعار؛ لا يوجد طلاب مستهدفون باشتراك فعّال حاليًا");
+          toast.success(
+            `📨 داخل التطبيق: ${result.recipients} طالب · 🔔 الجهاز: ${result.pushConfigured ? `${result.pushSent} وصل، ${result.pushFailed} فشل` : "غير مفعّل"} · Telegram: ${result.telegramSent} وصل، ${result.telegramFailed} فشل · الجروب: ${result.groupConfigured ? `${result.groupSent} وصل` : "غير مربوط"}`,
+          );
+        else toast.info("📨 حُفظ الإشعار، لكن لا يوجد طلاب مستهدفون باشتراك فعّال حاليًا");
       } catch {
         toast.error("تمت إضافة المحاضرة، لكن تعذّر إرسال الإشعار تلقائيًا");
       }
@@ -229,11 +277,48 @@ function Content() {
       try {
         const result = await notifyContent({ data: { type: "event", contentId: createdEvent.id } });
         if (result.recipients > 0)
-          toast.success(`📨 أُرسل إشعار الموعد تلقائيًا إلى ${result.recipients} طالب`);
-        else toast.info("📨 تم حفظ الإشعار؛ لا يوجد طلاب مستهدفون باشتراك فعّال حاليًا");
+          toast.success(`📨 تم إرسال إشعار الموعد لـ ${result.recipients} طالب · الجروب: ${result.groupConfigured ? `${result.groupSent} وصل` : "غير مربوط"}`);
+        else toast.info(`📨 لا يوجد طلاب مستهدفون حاليًا · الجروب: ${result.groupConfigured ? `${result.groupSent} وصل` : "غير مربوط"}`);
       } catch {
         toast.error("تمت إضافة الموعد، لكن تعذّر إرسال الإشعار تلقائيًا");
       }
+    }
+  }
+  async function addClassSession(e: FormEvent) {
+    e.preventDefault();
+    const subject = (subjects.data ?? []).find((item) => item.id === classSession.subject_id);
+    if (!subject || classSession.ends_at <= classSession.starts_at) {
+      toast.error("اختر المادة وتأكد أن وقت النهاية بعد البداية");
+      return;
+    }
+    setBusy(true);
+    const { error } = await supabase.from("class_schedule").insert({
+      subject_id: subject.id,
+      day_of_week: Number(classSession.day_of_week),
+      starts_at: classSession.starts_at,
+      ends_at: classSession.ends_at,
+      location: classSession.location.trim() || null,
+      instructor: classSession.instructor.trim() || null,
+      target_department_ids: subject.department_id ? [subject.department_id] : [],
+      target_levels: subject.level ? [subject.level] : [],
+    });
+    setBusy(false);
+    if (error) {
+      toast.error("تعذّر إضافة الحصة إلى الجدول");
+      return;
+    }
+    toast.success("تمت إضافة الحصة للجدول الأسبوعي");
+    qc.invalidateQueries({ queryKey: ["admin-class-schedule"] });
+    qc.invalidateQueries({ queryKey: ["class-schedule"] });
+  }
+  async function deleteClassSession(id: string) {
+    if (!confirm("حذف هذه الحصة من الجدول الأسبوعي؟")) return;
+    const { error } = await supabase.from("class_schedule").delete().eq("id", id);
+    if (error) toast.error("تعذّر حذف الحصة");
+    else {
+      toast.success("تم حذف الحصة");
+      qc.invalidateQueries({ queryKey: ["admin-class-schedule"] });
+      qc.invalidateQueries({ queryKey: ["class-schedule"] });
     }
   }
   async function addResource(e: FormEvent) {
@@ -572,6 +657,19 @@ function Content() {
               required
               type="url"
             />
+            <Input
+              type="file"
+              accept="application/pdf,video/*,image/*,application/zip"
+              disabled={driveUploadBusy}
+              aria-label="رفع ملف مباشرة إلى Google Drive"
+              onChange={(event) => {
+                void uploadLectureFile(event.currentTarget.files?.[0]);
+                event.currentTarget.value = "";
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              {driveUploadBusy ? "جارٍ الرفع إلى Google Drive…" : "اختر ملفاً لرفعه مباشرة إلى Drive (حتى 2.5 ميغابايت)، أو أدخل رابطاً يدوياً."}
+            </p>
             <select
               className={sel}
               aria-label="نوع الملف"
@@ -670,6 +768,40 @@ function Content() {
           </form>
         </Card>
       </div>
+
+      <Card className="mt-4">
+        <h2 className="font-bold">إعداد جدول الحصص الأسبوعي</h2>
+        <p className="mt-1 text-sm text-muted-foreground">تظهر الحصة أسبوعيًا لطلاب قسم وسنة المادة المختارة.</p>
+        <form onSubmit={addClassSession} className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <select className={sel} value={classSession.subject_id} onChange={(e) => setClassSession({ ...classSession, subject_id: e.target.value })} required>
+            <option value="">اختر المادة</option>
+            {(subjects.data ?? []).map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+          </select>
+          <select className={sel} value={classSession.day_of_week} onChange={(e) => setClassSession({ ...classSession, day_of_week: e.target.value })}>
+            {["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"].map((day, index) => <option key={day} value={index}>{day}</option>)}
+          </select>
+          <div className="grid grid-cols-2 gap-2">
+            <Input aria-label="وقت بداية الحصة" type="time" value={classSession.starts_at} onChange={(e) => setClassSession({ ...classSession, starts_at: e.target.value })} required />
+            <Input aria-label="وقت نهاية الحصة" type="time" value={classSession.ends_at} onChange={(e) => setClassSession({ ...classSession, ends_at: e.target.value })} required />
+          </div>
+          <Input placeholder="القاعة أو المكان (اختياري)" value={classSession.location} onChange={(e) => setClassSession({ ...classSession, location: e.target.value })} />
+          <Input placeholder="اسم الدكتور (اختياري)" value={classSession.instructor} onChange={(e) => setClassSession({ ...classSession, instructor: e.target.value })} />
+          <Button disabled={busy || !(subjects.data?.length)} className="w-full">إضافة للجدول</Button>
+        </form>
+        <div className="mt-4 divide-y rounded-xl border">
+          {(classSchedule.data ?? []).map((session) => (
+            <div key={session.id} className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
+              <div>
+                <p className="font-semibold">{["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"][session.day_of_week]} · {(session.subjects as { name: string } | null)?.name}</p>
+                <p className="text-muted-foreground" dir="ltr">{session.starts_at.slice(0, 5)} – {session.ends_at.slice(0, 5)}{session.location ? ` · ${session.location}` : ""}{session.instructor ? ` · ${session.instructor}` : ""}</p>
+              </div>
+              <Button type="button" size="sm" variant="outline" onClick={() => void deleteClassSession(session.id)}>حذف</Button>
+            </div>
+          ))}
+          {classSchedule.isSuccess && !classSchedule.data.length && <p className="p-3 text-sm text-muted-foreground">لم تتم إضافة حصص أسبوعية بعد.</p>}
+          {classSchedule.isError && <p className="p-3 text-sm text-destructive">تعذّر تحميل الحصص الأسبوعية.</p>}
+        </div>
+      </Card>
 
       <Card className="mt-4">
         <h2 className="font-bold">إضافة مورد برابط</h2>
