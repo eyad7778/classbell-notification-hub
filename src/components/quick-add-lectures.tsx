@@ -2,9 +2,11 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { notifyNewAcademicContent } from "@/lib/staff.functions";
+import { finishDriveUpload, startDriveUpload } from "@/lib/drive.functions";
 import { parseLectureLines } from "@/lib/lecture-batch";
 
 const sel = "h-10 w-full rounded-md border border-input bg-background px-3 text-sm";
@@ -19,6 +21,9 @@ export function QuickAddLectures({
 }) {
   const qc = useQueryClient();
   const notify = useServerFn(notifyNewAcademicContent);
+  const startUpload = useServerFn(startDriveUpload);
+  const finishUpload = useServerFn(finishDriveUpload);
+  const [uploads, setUploads] = useState<Record<string, number>>({});
   const [chosen, setChosen] = useState("");
   const subjectId = fixedSubject ?? chosen;
   const [text, setText] = useState("");
@@ -85,6 +90,48 @@ export function QuickAddLectures({
     }
   }
 
+  async function uploadFiles(files: FileList | null) {
+    if (!files?.length) return;
+    for (const file of Array.from(files)) {
+      const label = file.name;
+      setUploads((u) => ({ ...u, [label]: 0 }));
+      try {
+        const { uploadUrl } = await startUpload({
+          data: { name: file.name, mimeType: file.type, size: file.size, origin: window.location.origin },
+        });
+        const fileId = await new Promise<string>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", uploadUrl);
+          if (file.type) xhr.setRequestHeader("Content-Type", file.type);
+          xhr.upload.onprogress = (e) =>
+            e.lengthComputable && setUploads((u) => ({ ...u, [label]: Math.round((e.loaded / e.total) * 100) }));
+          xhr.onload = () => {
+            try {
+              const id = JSON.parse(xhr.responseText).id;
+              if (xhr.status < 300 && id) resolve(id);
+              else reject(new Error());
+            } catch {
+              reject(new Error());
+            }
+          };
+          xhr.onerror = () => reject(new Error());
+          xhr.send(file);
+        });
+        const { url } = await finishUpload({ data: { fileId } });
+        const title = file.name.replace(/\.[^.]+$/, "");
+        setText((t) => (t.trim() ? `${t.trimEnd()}\n` : "") + `${title} | ${url}`);
+        toast.success(`اترفع «${title}» على Drive`);
+      } catch (e) {
+        toast.error(e instanceof Error && e.message ? e.message : `تعذّر رفع ${label}`);
+      } finally {
+        setUploads((u) => {
+          const { [label]: _, ...rest } = u;
+          return rest;
+        });
+      }
+    }
+  }
+
   return (
     <div className="space-y-2">
       {!fixedSubject && (
@@ -95,6 +142,25 @@ export function QuickAddLectures({
           ))}
         </select>
       )}
+      <label className="flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-primary text-sm font-semibold text-primary">
+        <Upload className="size-4" /> رفع ملفات من الجهاز إلى Drive
+        <input
+          type="file"
+          multiple
+          accept="application/pdf,video/*,image/*,.ppt,.pptx,.doc,.docx"
+          className="sr-only"
+          onChange={(e) => {
+            void uploadFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+      </label>
+      {Object.entries(uploads).map(([name, pct]) => (
+        <div key={name} className="text-xs">
+          <div className="flex justify-between"><span className="truncate">{name}</span><span>{pct}%</span></div>
+          <div className="h-1.5 rounded bg-muted"><div className="h-full rounded bg-primary" style={{ width: `${pct}%` }} /></div>
+        </div>
+      ))}
       <textarea
         dir="auto"
         rows={5}
