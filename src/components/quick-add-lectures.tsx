@@ -2,9 +2,11 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { notifyNewAcademicContent } from "@/lib/staff.functions";
+import { finishDriveUpload, startDriveUpload } from "@/lib/drive.functions";
 import { parseLectureLines } from "@/lib/lecture-batch";
 
 const sel = "h-10 w-full rounded-md border border-input bg-background px-3 text-sm";
@@ -19,6 +21,9 @@ export function QuickAddLectures({
 }) {
   const qc = useQueryClient();
   const notify = useServerFn(notifyNewAcademicContent);
+  const startUpload = useServerFn(startDriveUpload);
+  const finishUpload = useServerFn(finishDriveUpload);
+  const [uploads, setUploads] = useState<Record<string, number>>({});
   const [chosen, setChosen] = useState("");
   const subjectId = fixedSubject ?? chosen;
   const [text, setText] = useState("");
