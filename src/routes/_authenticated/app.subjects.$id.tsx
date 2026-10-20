@@ -19,6 +19,7 @@ import {
 import { pageMeta } from "@/lib/meta";
 import { contentTarget, viewerKind, type ViewerKind } from "@/lib/lecture-links";
 import { useText } from "@/hooks/use-preferences";
+import { QuickAddLectures } from "@/components/quick-add-lectures";
 
 export const Route = createFileRoute("/_authenticated/app/subjects/$id")({
   head: () => pageMeta("محاضرات المادة", "محاضرات وملفات ومواعيد المادة."),
@@ -137,6 +138,12 @@ function SubjectPage() {
               </li>
             ))}
           </ul>
+        </Card>
+      )}
+      {me.data?.isStaff && (
+        <Card className="mb-4">
+          <h2 className="mb-2 font-bold">إضافة محاضرات لهذه المادة</h2>
+          <QuickAddLectures subjectId={id} />
         </Card>
       )}
       {resourcesFailed && (
