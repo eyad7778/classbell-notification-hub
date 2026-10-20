@@ -8,4 +8,6 @@
 
 The bot looks up the numbers in student profiles. It cannot add Telegram users directly by phone number through the Bot API; for each matched student who has linked Telegram, it creates a single-use invite link and sends it privately. The student must open the link to join. Once the group is configured, a student who links Telegram from the app also receives a one-time group invite automatically (unless they are already a member).
 
-Announcements and academic notifications are broadcast to the configured group. Individual account updates are also announced there without personal details; their full details remain in the student's private chat and app.
+For phone numbers that are not registered in the platform, the bot returns a separate group invite link for the administrator to forward. Since there is no student profile or Telegram chat to message, the administrator must share that link with them. It expires after 48 hours and can be used by multiple recipients.
+
+Announcements and academic notifications are broadcast to the configured group. Individual account updates are sent only to the affected student and are never posted in the group.

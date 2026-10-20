@@ -88,7 +88,7 @@ function Messages() {
             .filter(Boolean),
         },
       });
-      toast.success(`تم النشر · Telegram للطلاب: ${r.sent} نجح، ${r.failed} فشل · الجروب: ${r.groupConfigured ? `${r.groupSent} وصل` : "غير مربوط"} · Push: ${r.pushConfigured ? `${r.pushSent} sent` : "not configured"}`);
+      toast.success(`تم النشر · Telegram للطلاب: ${r.sent} نجح، ${r.failed} فشل · الجروب: ${r.groupSkipped ? "إشعار خاص" : r.groupConfigured ? `${r.groupSent} وصل` : "غير مربوط"} · Push: ${r.pushConfigured ? `${r.pushSent} sent` : "not configured"}`);
       setA({ ...a, title: "", body: "" });
       qc.invalidateQueries();
     } catch (err) {
@@ -133,7 +133,7 @@ function Messages() {
                 .filter(Boolean),
         },
       });
-      toast.success(`تم الإرسال · Telegram للطلاب: ${r.sent} نجح، ${r.failed} فشل · الجروب: ${r.groupConfigured ? `${r.groupSent} وصل` : "غير مربوط"} · Push: ${r.pushConfigured ? `${r.pushSent} sent` : "not configured"}`);
+      toast.success(`تم الإرسال · Telegram للطلاب: ${r.sent} نجح، ${r.failed} فشل · الجروب: ${r.groupSkipped ? "إشعار خاص" : r.groupConfigured ? `${r.groupSent} وصل` : "غير مربوط"} · Push: ${r.pushConfigured ? `${r.pushSent} sent` : "not configured"}`);
       setN({ ...n, title: "", body: "" });
       qc.invalidateQueries();
     } catch (err) {

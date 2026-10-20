@@ -47,7 +47,7 @@ async function notifyUser(
     [userId],
     `<b>${escapeHtml(title)}</b>\n${escapeHtml(body)}`,
     n?.id ?? null,
-    "🔔 أرسلت المنصة تحديثًا خاصًا لأحد الطلاب. تظهر تفاصيله للطالب المعني فقط في إشعارات حسابه.",
+    null,
   ).catch((e) => console.error(e));
 }
 
@@ -416,7 +416,7 @@ export const sendNotification = createServerFn({ method: "POST" })
     const push = await deliverPush(admin, ids, { title: data.title, body: data.body });
     const { deliverTelegram, escapeHtml } = await import("@/lib/telegram.server");
     const message = `<b>${escapeHtml(data.title)}</b>\n${escapeHtml(data.body)}`;
-    const telegram = await deliverTelegram(admin, data.telegram ? ids : [], message, n.id);
+    const telegram = await deliverTelegram(admin, data.telegram ? ids : [], message, n.id, data.userId ? null : message);
     if (!data.telegram) return { ...telegram, sent: 0, failed: 0, pushSent: push.sent, pushFailed: push.failed, pushConfigured: push.configured };
     return { ...telegram, pushSent: push.sent, pushFailed: push.failed, pushConfigured: push.configured };
   });

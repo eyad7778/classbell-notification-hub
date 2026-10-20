@@ -57,9 +57,9 @@ export async function deliverTelegramGroup(admin: Admin, text: string) {
     .maybeSingle();
   if (error) {
     console.error("Could not load the Telegram group configuration", { code: error.code, message: error.message });
-    return { groupSent: 0, groupFailed: 1, groupConfigured: false };
+    return { groupSent: 0, groupFailed: 1, groupConfigured: false, groupSkipped: false };
   }
-  if (!group) return { groupSent: 0, groupFailed: 0, groupConfigured: false };
+  if (!group) return { groupSent: 0, groupFailed: 0, groupConfigured: false, groupSkipped: false };
 
   try {
     const response = await tg("sendMessage", {
@@ -72,10 +72,11 @@ export async function deliverTelegramGroup(admin: Admin, text: string) {
       groupSent: response.ok ? 1 : 0,
       groupFailed: response.ok ? 0 : 1,
       groupConfigured: true,
+      groupSkipped: false,
     };
   } catch (deliveryError) {
     console.error("Telegram group delivery failed", deliveryError);
-    return { groupSent: 0, groupFailed: 1, groupConfigured: true };
+    return { groupSent: 0, groupFailed: 1, groupConfigured: true, groupSkipped: false };
   }
 }
 
@@ -85,10 +86,14 @@ export async function deliverTelegram(
   userIds: string[],
   text: string,
   notificationId: string | null,
-  groupText = text,
+  groupText: string | null = text,
 ) {
+  const groupResult = async () => groupText === null
+    ? { groupSent: 0, groupFailed: 0, groupConfigured: false, groupSkipped: true }
+    : { ...await deliverTelegramGroup(admin, groupText), groupSkipped: false };
+
   if (userIds.length === 0) {
-    const group = await deliverTelegramGroup(admin, groupText);
+    const group = await groupResult();
     return { sent: 0, failed: 0, ...group };
   }
   const { data: links, error: linksError } = await admin
@@ -97,7 +102,7 @@ export async function deliverTelegram(
     .in("user_id", userIds);
   if (linksError) {
     console.error("Could not load Telegram links", { code: linksError.code, message: linksError.message });
-    const group = await deliverTelegramGroup(admin, groupText);
+    const group = await groupResult();
     return { sent: 0, failed: userIds.length, ...group };
   }
 
@@ -143,6 +148,6 @@ export async function deliverTelegram(
     if (deliveryError) console.error("Could not record Telegram delivery", deliveryError);
   }));
 
-  const group = await deliverTelegramGroup(admin, groupText);
+  const group = await groupResult();
   return { sent, failed, ...group };
 }

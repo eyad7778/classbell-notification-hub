@@ -211,8 +211,28 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
             }
           }
           const notFound = phones.length - users.length;
+          let sharedInviteLink = "";
+          if (notFound > 0) {
+            try {
+              const invite = await tg<{ invite_link: string }>("createChatInviteLink", {
+                chat_id: group.chat_id,
+                name: "Unregistered student invite",
+                expire_date: Math.floor(Date.now() / 1000) + 48 * 60 * 60,
+              });
+              if (invite.ok && invite.result?.invite_link) {
+                sharedInviteLink = invite.result.invite_link;
+              } else {
+                console.error("Could not create shared invite for unregistered students", {
+                  status: invite.status,
+                  description: invite.description,
+                });
+              }
+            } catch (error) {
+              console.error("Could not create shared invite for unregistered students", error);
+            }
+          }
           await reply(
-            `📨 خلصت مراجعة الأرقام:\n✅ أرسلت دعوات: ${invited}\n👥 موجودون بالفعل: ${alreadyInGroup}\n🔗 يحتاجون ربط Telegram من التطبيق: ${notLinked}\n❓ أرقام غير مسجلة: ${notFound}\n⚠️ تعذّر إرسال دعوة: ${failed}`,
+            `📨 خلصت مراجعة الأرقام:\n✅ أرسلت دعوات للطلاب المرتبطين: ${invited}\n👥 موجودون بالفعل: ${alreadyInGroup}\n🔗 يحتاجون ربط Telegram من التطبيق: ${notLinked}\n❓ أرقام غير مسجلة: ${notFound}\n⚠️ تعذّر إرسال دعوة: ${failed}${sharedInviteLink ? `\n\n📨 ابعت الرابط ده للطلاب غير المسجلين عشان ينضموا للجروب:\n${sharedInviteLink}\nالرابط صالح لمدة 48 ساعة.` : notFound > 0 ? "\n\nلم أتمكن من إنشاء رابط دعوة للطلاب غير المسجلين؛ تأكد أن البوت مشرف وله صلاحية دعوة الأعضاء." : ""}`,
           );
           return Response.json({ ok: true });
         }
