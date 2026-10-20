@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, fmtDate, kindLabel, PageTitle } from "@/components/app-ui";
 import { pageMeta } from "@/lib/meta";
 import { notifyNewAcademicContent } from "@/lib/staff.functions";
+import { QuickAddLectures } from "@/components/quick-add-lectures";
 
 export const Route = createFileRoute("/_authenticated/admin/content")({
   head: () => pageMeta("إدارة المحتوى", "المواد والمحاضرات والملفات والمواعيد."),
@@ -521,7 +522,12 @@ function Content() {
           </form>
         </Card>
         <Card>
-          <h2 className="font-bold">إضافة محاضرة</h2>
+          <h2 className="font-bold">إضافة محاضرات بسرعة</h2>
+          <div className="mt-3">
+            <QuickAddLectures subjects={(subjects.data ?? []).map((s) => ({ id: s.id, name: s.name }))} />
+          </div>
+          <details className="mt-4">
+            <summary className="cursor-pointer text-sm text-muted-foreground">إضافة محاضرة بالتفصيل</summary>
           <form onSubmit={addLecture} className="mt-3 space-y-2">
             <select
               className={sel}
@@ -584,6 +590,7 @@ function Content() {
               حفظ المحاضرة
             </Button>
           </form>
+          </details>
         </Card>
         <Card>
           <h2 className="font-bold">موعد / امتحان</h2>
