@@ -314,7 +314,13 @@ export const reviewStudentRegistration = createServerFn({ method: "POST" })
       .eq("registration_status", "pending");
     if (updateError) throw new Error("حُذفت الصورة لكن تعذّر تفعيل الحساب؛ راجع الحالة في قائمة الطلاب");
 
-    await notifyUser(admin, data.userId, "تم تفعيل حسابك", "تمت مراجعة بياناتك، وأصبح حسابك مفعّلًا.", context.userId);
+    await notifyUser(
+      admin,
+      data.userId,
+      "تم تفعيل حسابك 🎉",
+      "تقدر الآن تبدأ اشتراكك السنوي. افتح صفحة حسابي، اختر طريقة الدفع، وأرسل إيصال العملية للمراجعة.",
+      context.userId,
+    );
     return { ok: true };
   });
 

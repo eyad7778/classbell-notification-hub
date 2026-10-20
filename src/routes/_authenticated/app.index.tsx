@@ -252,19 +252,23 @@ function StudentHome() {
             <div>
               <h2 className="font-bold">{t("هناك خطوة مطلوبة لإظهار محتواك الدراسي", "One step is needed to unlock your study content")}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {tg
-                  ? t("فعّل اشتراكك لعرض المواد والمواعيد المخصصة لقسمك.", "Activate your subscription to view subjects and dates for your department.")
-                  : status === "active"
-                    ? t("اربط Telegram لإكمال الوصول.", "Link Telegram to finish setting up access.")
-                    : t("أكمل الاشتراك، ثم اربط Telegram من داخل المنصة.", "Activate your subscription, then link Telegram from the app.")}
+                {me.data.profile?.registration_status === "active" && status !== "active"
+                  ? t("تم تفعيل حسابك! ابدأ الاشتراك من صفحة حسابي لتتمكن من فتح المواد والمواعيد.", "Your account is approved! Start your subscription from My Account to unlock subjects and schedules.")
+                  : tg
+                    ? t("فعّل اشتراكك لعرض المواد والمواعيد المخصصة لقسمك.", "Activate your subscription to view subjects and dates for your department.")
+                    : status === "active"
+                      ? t("اربط Telegram لإكمال الوصول.", "Link Telegram to finish setting up access.")
+                      : t("أكمل الاشتراك، ثم اربط Telegram من داخل المنصة.", "Activate your subscription, then link Telegram from the app.")}
               </p>
               <div className="mt-3 flex gap-2">
                 <Button size="sm" asChild>
-                  <Link to={tg ? "/app/subscription" : "/app/telegram"}>
-                    {tg ? t("عرض الاشتراك", "View subscription") : t("ربط Telegram", "Link Telegram")}
+                  <Link to={status === "active" ? (tg ? "/app/subscription" : "/app/telegram") : "/app/subscription"}>
+                    {status === "active"
+                      ? tg ? t("عرض الاشتراك", "View subscription") : t("ربط Telegram", "Link Telegram")
+                      : t("اشترك الآن", "Subscribe now")}
                   </Link>
                 </Button>
-                {!tg && (
+                {status === "active" && !tg && (
                   <Button size="sm" variant="outline" asChild>
                     <Link to="/app/subscription">{t("الاشتراك", "Subscription")}</Link>
                   </Button>
