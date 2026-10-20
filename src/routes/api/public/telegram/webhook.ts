@@ -264,7 +264,56 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           await reply("حدث خطأ أثناء الربط، حاول مرة أخرى بعد قليل.");
           return Response.json({ ok: true });
         }
-        await reply("✅ تم ربط حسابك بنجاح! ستصلك إشعارات Smart Student هنا. يمكنك العودة للتطبيق الآن.");
+        let groupStatus = "";
+        try {
+          const { data: group, error: groupError } = await supabaseAdmin
+            .from("telegram_group_config")
+            .select("chat_id, chat_title")
+            .eq("id", 1)
+            .maybeSingle();
+
+          if (groupError) {
+            console.error("Could not load Telegram group after account linking", {
+              code: groupError.code,
+              message: groupError.message,
+            });
+          } else if (group) {
+            const member = await tg<{ status: string; is_member?: boolean }>("getChatMember", {
+              chat_id: group.chat_id,
+              user_id: msg.from.id,
+            });
+            const alreadyInGroup = member.ok && (
+              ["creator", "administrator", "member"].includes(member.result?.status ?? "") ||
+              member.result?.is_member === true
+            );
+
+            if (alreadyInGroup) {
+              groupStatus = `\n\n✅ أنت بالفعل موجود في جروب ${group.chat_title ?? "الطلاب"}.`;
+            } else {
+              const invite = await tg<{ invite_link: string }>("createChatInviteLink", {
+                chat_id: group.chat_id,
+                name: "Student auto invite",
+                expire_date: Math.floor(Date.now() / 1000) + 48 * 60 * 60,
+                member_limit: 1,
+              });
+              if (invite.ok && invite.result?.invite_link) {
+                groupStatus = `\n\n🎓 انضم لجروب ${group.chat_title ?? "الطلاب"} من الرابط ده:\n${invite.result.invite_link}\nالرابط صالح لمدة 48 ساعة ولمرة واحدة.`;
+              } else {
+                console.error("Could not create group invite after Telegram account linking", {
+                  status: invite.status,
+                  description: invite.description,
+                });
+              }
+            }
+          }
+        } catch (groupInviteError) {
+          console.error("Telegram group invite after account linking failed", groupInviteError);
+        }
+
+        const groupFallback = groupStatus
+          ? ""
+          : "\n\nرابط جروب الطلاب مش جاهز حاليًا؛ هتفضل توصلك الإشعارات الخاصة هنا، والإدارة تقدر تجهز دعوة الجروب لاحقًا.";
+        await reply(`✅ تم ربط حسابك بنجاح! ستصلك إشعارات Smart Student هنا. يمكنك العودة للتطبيق الآن.${groupStatus || groupFallback}`);
         return Response.json({ ok: true });
       },
     },
