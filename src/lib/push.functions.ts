@@ -51,3 +51,30 @@ export const removePushSubscription = createServerFn({ method: "POST" })
     }
     return { ok: true };
   });
+
+export const sendPushTestNotification = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { getVapidPublicKey, deliverPush } = await import("@/lib/push.server");
+    if (!getVapidPublicKey()) throw new Error("PUSH_NOT_CONFIGURED");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: subscriptions, error, status } = await supabaseAdmin
+      .from("push_subscriptions")
+      .select("id")
+      .eq("user_id", context.userId);
+    if (error) {
+      const reason = classifyPushStorageError({ code: error.code, message: error.message, status });
+      console.error("Push test could not load device subscriptions", { reason, code: error.code, status });
+      throw new Error(reason);
+    }
+    if (!subscriptions?.length) throw new Error("PUSH_DEVICE_NOT_CONNECTED");
+
+    const result = await deliverPush(supabaseAdmin, [context.userId], {
+      title: "Smart Student 🔔",
+      body: "إشعارات هذا الجهاز تعمل بنجاح! 🎉",
+      url: "/app/notifications",
+    });
+    if (!result.sent) throw new Error("PUSH_DELIVERY_FAILED");
+    return { sent: result.sent };
+  });
