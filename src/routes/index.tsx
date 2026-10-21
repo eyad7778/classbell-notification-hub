@@ -5,8 +5,8 @@ import { PublicLayout } from "@/components/site-shell";
 import { useSettings } from "@/hooks/use-settings";
 import { usePreferences } from "@/hooks/use-preferences";
 import { useSession } from "@/hooks/use-session";
-import hero from "@/assets/hero.jpg";
-import designerPhoto from "@/assets/designer-photo.jpg";
+import hero from "@/assets/hero.webp";
+import designerPhoto from "@/assets/designer-photo.webp";
 
 export const Route = createFileRoute("/")({
   head: () => ({

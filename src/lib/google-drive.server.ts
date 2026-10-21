@@ -3,8 +3,8 @@ import { createSign } from "node:crypto";
 type ServiceAccount = { client_email: string; private_key: string; token_uri?: string };
 
 function credentials(): { account: ServiceAccount; folderId: string } {
-  const raw = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON;
-  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+  const raw = process.env['GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON'];
+  const folderId = process.env['GOOGLE_DRIVE_FOLDER_ID'];
   if (!raw || !folderId) {
     throw new Error("Google Drive is not configured on the server (GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON, GOOGLE_DRIVE_FOLDER_ID)");
   }

@@ -23,6 +23,10 @@ export const Route = createFileRoute("/_authenticated/app/")({
     meta: [
       { title: "لوحتي — Smart Student" },
       { name: "description", content: "ملخص حسابك ومحتواك الدراسي." },
+      { property: "og:title", content: "لوحتي — Smart Student" },
+      { property: "og:description", content: "ملخص حسابك ومحتواك الدراسي." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: StudentHome,
@@ -76,6 +80,7 @@ function StudentHome() {
     queryKey: ["home-feed", userId],
     enabled: !!hasAccess && !!userId,
     queryFn: async () => {
+      if (!userId) throw new Error("not signed in");
       const [
         announcements,
         events,
@@ -106,8 +111,8 @@ function StudentHome() {
           .select("id, title, body, created_at")
           .order("created_at", { ascending: false })
           .limit(4),
-        supabase.from("notification_reads").select("notification_id").eq("user_id", userId!),
-        supabase.from("announcement_reads").select("announcement_id").eq("user_id", userId!),
+        supabase.from("notification_reads").select("notification_id").eq("user_id", userId),
+        supabase.from("announcement_reads").select("announcement_id").eq("user_id", userId),
         supabase
           .from("lectures")
           .select("id, title, week, subject_id, created_at, subjects(name)")
@@ -136,9 +141,10 @@ function StudentHome() {
   const departmentName = useQuery({
     queryKey: ["student-department", departmentId],
     enabled: !!departmentId,
-    queryFn: async () =>
-      (await supabase.from("departments").select("name").eq("id", departmentId!).maybeSingle()).data
-        ?.name ?? null,
+    queryFn: async () => {
+      if (!departmentId) return null;
+      return (await supabase.from("departments").select("name").eq("id", departmentId).maybeSingle()).data?.name ?? null;
+    },
   });
 
   async function markRead(notificationId: string) {

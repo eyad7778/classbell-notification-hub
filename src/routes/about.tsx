@@ -10,6 +10,8 @@ export const Route = createFileRoute("/about")({
       { name: "description", content: "تعرّف على فكرة Smart Student وهدفه في تنظيم الحياة الدراسية للطلاب." },
       { property: "og:title", content: "عن مشروع Smart Student" },
       { property: "og:description", content: "تطبيق خدمات طلابية مستقل يجمع المحتوى الدراسي والإعلانات والإشعارات." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: About,

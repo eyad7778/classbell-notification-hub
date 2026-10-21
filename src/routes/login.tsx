@@ -17,6 +17,8 @@ export const Route = createFileRoute("/login")({
       { name: "description", content: "سجّل دخولك إلى Smart Student برقم هاتفك." },
       { property: "og:title", content: "تسجيل الدخول — Smart Student" },
       { property: "og:description", content: "ادخل إلى حسابك الطلابي." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Login,
