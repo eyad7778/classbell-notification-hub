@@ -10,3 +10,5 @@
 - External deployments target Vercel through the existing Vite wrapper's Nitro option; Lovable keeps its managed deployment override, avoiding duplicate framework plugins.
 - External backend credentials can override the server service key via EXTERNAL_SERVICE_ROLE_KEY; the managed SUPABASE_ secret namespace is reserved and cannot accept user-entered keys.
 - Telegram token creation accepts the same service credential override as the admin client; webhook storage errors return retryable failures rather than falsely reporting an invalid token.
+- Create the query cache per router with short freshness windows and intent preloading; this avoids repeated navigation requests without sharing SSR user data.
+- Client navigation and profile queries read the local auth session; authorization remains enforced by database RLS and authenticated server functions, avoiding redundant auth network calls.

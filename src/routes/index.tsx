@@ -10,6 +10,7 @@ import designerPhoto from "@/assets/designer-photo.jpg";
 
 export const Route = createFileRoute("/")({
   head: () => ({
+    links: [{ rel: "preload", as: "image", href: hero, fetchPriority: "high" }],
     meta: [
       { title: "Smart Student — خدماتك الطلابية في مكان واحد" },
       { name: "description", content: "تطبيق خدمات طلابية يجمع الإعلانات والمحاضرات والمواعيد والإشعارات عبر Telegram في مكان واحد." },
@@ -75,7 +76,7 @@ function Index() {
               )}
             </div>
           </div>
-          <img src={hero} alt={english ? "Smart Student app on a phone" : "واجهة تطبيق Smart Student على الهاتف"} width={1024} height={896} className="mx-auto w-full max-w-md" />
+          <img src={hero} fetchPriority="high" decoding="async" alt={english ? "Smart Student app on a phone" : "واجهة تطبيق Smart Student على الهاتف"} width={1024} height={896} className="mx-auto w-full max-w-md" />
         </div>
       </section>
 
@@ -141,6 +142,8 @@ function Index() {
         <div className="mx-auto grid max-w-5xl items-center gap-8 sm:grid-cols-[minmax(180px,260px)_1fr] sm:gap-12">
           <img
             src={designerPhoto}
+            loading="lazy"
+            decoding="async"
             alt={english ? "Smart Student designer" : "مصمم تطبيق Smart Student"}
             width={1067}
             height={1280}

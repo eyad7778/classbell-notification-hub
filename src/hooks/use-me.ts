@@ -24,10 +24,11 @@ export function effectiveStatus(
 export function useMe() {
   return useQuery({
     queryKey: ["me"],
+    staleTime: 15_000,
     refetchOnWindowFocus: true,
     queryFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
-      const id = u.user?.id;
+      const { data: u } = await supabase.auth.getSession();
+      const id = u.session?.user.id;
       if (!id) throw new Error("not signed in");
       const [p, s, t, r, staffPermissions] = await Promise.all([
         supabase

@@ -1,4 +1,5 @@
 # Smart Student roadmap
+- [ ] Speed: reduce repeated data/auth requests, optimize image delivery, and verify public navigation; authenticated timing requires a real session.
 - [ ] Require signup ID image and first–fourth academic year, with resumable identity upload.
 - [ ] Require transfer receipt image and delete verification images automatically after the relevant approval.
 - [ ] Add owner-controlled scoped employee permissions, enforced in server functions and database policies.
