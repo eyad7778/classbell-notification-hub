@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 const LOVABLE_HOST = "https://classbell-notification-hub.lovable.app";
 
 function base() {
-  const env = import.meta.env.VITE_DRIVE_PROXY_URL as string | undefined;
+  const env = import.meta.env['VITE_DRIVE_PROXY_URL'] as string | undefined;
   if (env) return env.replace(/\/+$/, "");
   const h = window.location.hostname;
   return h.endsWith(".lovable.app") || h.endsWith(".lovableproject.com") || h === "localhost" ? "" : LOVABLE_HOST;
