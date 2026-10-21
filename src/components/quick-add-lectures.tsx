@@ -6,7 +6,7 @@ import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { notifyNewAcademicContent } from "@/lib/staff.functions";
-import { finishDriveUpload, startDriveUpload } from "@/lib/drive.functions";
+import { driveCall } from "@/lib/drive-client";
 import { parseLectureLines } from "@/lib/lecture-batch";
 
 const sel = "h-10 w-full rounded-md border border-input bg-background px-3 text-sm";
@@ -21,8 +21,6 @@ export function QuickAddLectures({
 }) {
   const qc = useQueryClient();
   const notify = useServerFn(notifyNewAcademicContent);
-  const startUpload = useServerFn(startDriveUpload);
-  const finishUpload = useServerFn(finishDriveUpload);
   const [uploads, setUploads] = useState<Record<string, number>>({});
   const [chosen, setChosen] = useState("");
   const subjectId = fixedSubject ?? chosen;
@@ -96,8 +94,8 @@ export function QuickAddLectures({
       const label = file.name;
       setUploads((u) => ({ ...u, [label]: 0 }));
       try {
-        const { uploadUrl } = await startUpload({
-          data: { name: file.name, mimeType: file.type, size: file.size, origin: window.location.origin },
+        const { uploadUrl } = await driveCall<{ uploadUrl: string }>("start",
+          { name: file.name, mimeType: file.type, size: file.size, origin: window.location.origin },
         });
         const fileId = await new Promise<string>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -117,7 +115,7 @@ export function QuickAddLectures({
           xhr.onerror = () => reject(new Error());
           xhr.send(file);
         });
-        const { url } = await finishUpload({ data: { fileId } });
+        const { url } = await driveCall<{ url: string }>("finish", { fileId });
         const title = file.name.replace(/\.[^.]+$/, "");
         setText((t) => (t.trim() ? `${t.trimEnd()}\n` : "") + `${title} | ${url}`);
         toast.success(`اترفع «${title}» على Drive`);
