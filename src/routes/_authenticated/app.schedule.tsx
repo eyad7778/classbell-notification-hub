@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/use-me";
-import { AccessGate, Card, Empty, fmtDate, kindLabel, Loading, PageTitle } from "@/components/app-ui";
+import { AccessGate, Card, Empty, ErrorBox, fmtDate, kindLabel, Loading, PageTitle } from "@/components/app-ui";
 import { pageMeta } from "@/lib/meta";
 import { useText } from "@/hooks/use-preferences";
 
