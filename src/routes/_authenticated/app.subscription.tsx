@@ -19,6 +19,8 @@ export const Route = createFileRoute("/_authenticated/app/subscription")({
       { name: "description", content: "بياناتك الدراسية وحالة اشتراكك." },
       { property: "og:title", content: "حسابي — Smart Student" },
       { property: "og:description", content: "تابع بياناتك الدراسية واشتراكك في Smart Student." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Subscription,

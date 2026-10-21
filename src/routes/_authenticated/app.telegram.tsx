@@ -17,6 +17,8 @@ export const Route = createFileRoute("/_authenticated/app/telegram")({
       { name: "description", content: "اربط حسابك بـ Telegram لتصلك الإشعارات." },
       { property: "og:title", content: "ربط Telegram — Smart Student" },
       { property: "og:description", content: "استقبل إشعارات Smart Student على Telegram." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: TelegramPage,
