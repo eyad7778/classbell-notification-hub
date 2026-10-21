@@ -30,6 +30,7 @@ import { Route as AuthenticatedAppSubscriptionRouteImport } from './routes/_auth
 import { Route as AuthenticatedAppTelegramRouteImport } from './routes/_authenticated/app.telegram'
 import { Route as AuthenticatedAppSubjectsIndexRouteImport } from './routes/_authenticated/app.subjects.index'
 import { Route as AuthenticatedAppSubjectsIdRouteImport } from './routes/_authenticated/app.subjects.$id'
+import { Route as ApiPublicDriveActionRouteImport } from './routes/api/public/drive.$action'
 import { Route as ApiPublicTelegramWebhookRouteImport } from './routes/api/public/telegram/webhook'
 
 const IndexRoute = IndexRouteImport.update({
@@ -147,6 +148,11 @@ const AuthenticatedAppSubjectsIdRoute =
     path: '/subjects/$id',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const ApiPublicDriveActionRoute = ApiPublicDriveActionRouteImport.update({
+  id: '/api/public/drive/$action',
+  path: '/api/public/drive/$action',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicTelegramWebhookRoute =
   ApiPublicTelegramWebhookRouteImport.update({
     id: '/api/public/telegram/webhook',
@@ -174,6 +180,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/app/': typeof AuthenticatedAppIndexRoute
   '/app/subjects/$id': typeof AuthenticatedAppSubjectsIdRoute
+  '/api/public/drive/$action': typeof ApiPublicDriveActionRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
   '/app/subjects/': typeof AuthenticatedAppSubjectsIndexRoute
 }
@@ -195,6 +202,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/app': typeof AuthenticatedAppIndexRoute
   '/app/subjects/$id': typeof AuthenticatedAppSubjectsIdRoute
+  '/api/public/drive/$action': typeof ApiPublicDriveActionRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
   '/app/subjects': typeof AuthenticatedAppSubjectsIndexRoute
 }
@@ -220,6 +228,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/app/': typeof AuthenticatedAppIndexRoute
   '/_authenticated/app/subjects/$id': typeof AuthenticatedAppSubjectsIdRoute
+  '/api/public/drive/$action': typeof ApiPublicDriveActionRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
   '/_authenticated/app/subjects/': typeof AuthenticatedAppSubjectsIndexRoute
 }
@@ -245,6 +254,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/app/'
     | '/app/subjects/$id'
+    | '/api/public/drive/$action'
     | '/api/public/telegram/webhook'
     | '/app/subjects/'
   fileRoutesByTo: FileRoutesByTo
@@ -266,6 +276,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/app/subjects/$id'
+    | '/api/public/drive/$action'
     | '/api/public/telegram/webhook'
     | '/app/subjects'
   id:
@@ -290,6 +301,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/'
     | '/_authenticated/app/'
     | '/_authenticated/app/subjects/$id'
+    | '/api/public/drive/$action'
     | '/api/public/telegram/webhook'
     | '/_authenticated/app/subjects/'
   fileRoutesById: FileRoutesById
@@ -301,6 +313,7 @@ export interface RootRouteChildren {
   DesignerRoute: typeof DesignerRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
+  ApiPublicDriveActionRoute: typeof ApiPublicDriveActionRoute
   ApiPublicTelegramWebhookRoute: typeof ApiPublicTelegramWebhookRoute
 }
 
@@ -453,6 +466,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppSubjectsIdRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/api/public/drive/$action': {
+      id: '/api/public/drive/$action'
+      path: '/api/public/drive/$action'
+      fullPath: '/api/public/drive/$action'
+      preLoaderRoute: typeof ApiPublicDriveActionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/telegram/webhook': {
       id: '/api/public/telegram/webhook'
       path: '/api/public/telegram/webhook'
@@ -527,6 +547,7 @@ const rootRouteChildren: RootRouteChildren = {
   DesignerRoute: DesignerRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
+  ApiPublicDriveActionRoute: ApiPublicDriveActionRoute,
   ApiPublicTelegramWebhookRoute: ApiPublicTelegramWebhookRoute,
 }
 export const routeTree = rootRouteImport

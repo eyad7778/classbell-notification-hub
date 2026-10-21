@@ -96,7 +96,7 @@ export function QuickAddLectures({
       try {
         const { uploadUrl } = await driveCall<{ uploadUrl: string }>("start",
           { name: file.name, mimeType: file.type, size: file.size, origin: window.location.origin },
-        });
+        );
         const fileId = await new Promise<string>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open("PUT", uploadUrl);
