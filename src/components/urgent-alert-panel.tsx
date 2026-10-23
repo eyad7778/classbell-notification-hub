@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { buildUrgentAlert, nextDateForDay, URGENT_ACTIONS, type UrgentAction } from "@/lib/urgent-alert";
 
 type Session = { id: string; day_of_week: number; starts_at: string; location: string | null; subjects: unknown };
-type Send = (args: { data: { sessionId: string; action: UrgentAction; date: string; newValue?: string; note?: string } }) => Promise<{ recipients: number; sent: number; failed: number }>;
+type Send = (args: { data: { sessionId: string; action: UrgentAction; date: string; newValue?: string | undefined; note?: string | undefined } }) => Promise<{ recipients: number; sent: number; failed: number }>;
 
 const placeholders: Partial<Record<UrgentAction, string>> = {
   time: "الموعد الجديد (مثال: الاثنين 12:00 ظهرًا)",
@@ -24,7 +24,7 @@ export function UrgentAlertPanel({ session, send, onDone }: { session: Session; 
   const needsValue = action in placeholders;
 
   async function submit() {
-    if (needsValue && !newValue.trim()) return toast.error("اكتب القيمة الجديدة");
+    if (needsValue && !newValue.trim()) { toast.error("اكتب القيمة الجديدة"); return; }
     setBusy(true);
     try {
       const r = await send({ data: { sessionId: session.id, action, date, newValue: newValue || undefined, note: note || undefined } });
