@@ -533,3 +533,47 @@ export const announceAndNotify = createServerFn({ method: "POST" })
     const telegram = await deliverTelegram(admin, ids, `<b>📢 ${escapeHtml(data.title)}</b>\n${escapeHtml(data.body.slice(0, 900))}`, n.id);
     return { ...telegram, pushSent: push.sent, pushFailed: push.failed, pushConfigured: push.configured };
   });
+
+export const sendUrgentClassAlert = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      sessionId: z.string().uuid(),
+      action: z.enum(["cancel", "time", "location", "instructor", "note"]),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      newValue: z.string().trim().max(200).optional(),
+      note: z.string().trim().max(500).optional(),
+    }).refine((v) => !["time", "location", "instructor"].includes(v.action) || (v.newValue ?? "").length > 0, "اكتب القيمة الجديدة").parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const ctx = context as Ctx;
+    let admin;
+    try { admin = await assertStaff(ctx, false, "communications"); }
+    catch { admin = await assertStaff(ctx, false, "content"); }
+    const { data: session, error } = await admin.from("class_schedule")
+      .select("starts_at, location, target_department_ids, target_levels, subjects(name)")
+      .eq("id", data.sessionId).maybeSingle();
+    if (error || !session) throw new Error("الحصة غير موجودة");
+    const { buildUrgentAlert } = await import("@/lib/urgent-alert");
+    const { title, body } = buildUrgentAlert({
+      action: data.action,
+      subject: (session.subjects as { name: string } | null)?.name ?? "المادة",
+      date: data.date, startsAt: session.starts_at, location: session.location,
+      newValue: data.newValue, note: data.note,
+    });
+    const { data: n, error: nErr } = await admin.from("notifications").insert({
+      user_id: null, title, body, created_by: context.userId,
+      target_department_ids: session.target_department_ids, target_levels: session.target_levels,
+    }).select("id").single();
+    if (nErr || !n) throw new Error("تعذّر حفظ التنبيه");
+    const ids = await eligibleTargetUsers(admin, session.target_department_ids, session.target_levels);
+    const [{ deliverPush }, { deliverTelegram, escapeHtml }] = await Promise.all([
+      import("@/lib/push.server"), import("@/lib/telegram.server"),
+    ]);
+    const message = `<b>${escapeHtml(title)}</b>\n\n${escapeHtml(body)}`;
+    const [telegram] = await Promise.all([
+      deliverTelegram(admin, ids, message, n.id),
+      deliverPush(admin, ids, { title, body, url: "/app/schedule" }).catch((e) => { console.error(e); return null; }),
+    ]);
+    return { recipients: ids.length, sent: telegram.sent, failed: telegram.failed, groupSent: telegram.groupSent };
+  });
