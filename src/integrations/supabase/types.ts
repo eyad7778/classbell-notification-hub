@@ -123,6 +123,89 @@ export type Database = {
           },
         ]
       }
+      class_schedule_changes: {
+        Row: {
+          id: string
+          session_id: string
+          change_date: string
+          scope: string
+          action: string
+          new_date: string | null
+          new_starts_at: string | null
+          new_ends_at: string | null
+          new_location: string | null
+          new_instructor: string | null
+          reason: string | null
+          target_department_ids: string[]
+          target_levels: string[]
+          dedupe_key: string
+          notification_id: string | null
+          recipients: number
+          telegram_sent: number
+          telegram_failed: number
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          session_id: string
+          change_date: string
+          scope?: string
+          action: string
+          new_date?: string | null
+          new_starts_at?: string | null
+          new_ends_at?: string | null
+          new_location?: string | null
+          new_instructor?: string | null
+          reason?: string | null
+          target_department_ids?: string[]
+          target_levels?: string[]
+          dedupe_key: string
+          notification_id?: string | null
+          recipients?: number
+          telegram_sent?: number
+          telegram_failed?: number
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          session_id?: string
+          change_date?: string
+          scope?: string
+          action?: string
+          new_date?: string | null
+          new_starts_at?: string | null
+          new_ends_at?: string | null
+          new_location?: string | null
+          new_instructor?: string | null
+          reason?: string | null
+          target_department_ids?: string[]
+          target_levels?: string[]
+          dedupe_key?: string
+          notification_id?: string | null
+          recipients?: number
+          telegram_sent?: number
+          telegram_failed?: number
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_schedule_changes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "class_schedule"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      class_reminder_runs: {
+        Row: { run_date: string; created_at: string }
+        Insert: { run_date: string; created_at?: string }
+        Update: { run_date?: string; created_at?: string }
+        Relationships: []
+      }
       departments: {
         Row: {
           created_at: string
