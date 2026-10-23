@@ -8,8 +8,7 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, fmtDate, kindLabel, PageTitle } from "@/components/app-ui";
 import { pageMeta } from "@/lib/meta";
-import { notifyNewAcademicContent, sendUrgentClassAlert, uploadDriveFile } from "@/lib/staff.functions";
-import { UrgentAlertPanel } from "@/components/urgent-alert-panel";
+import { notifyNewAcademicContent, uploadDriveFile } from "@/lib/staff.functions";
 import { QuickAddLectures } from "@/components/quick-add-lectures";
 
 export const Route = createFileRoute("/_authenticated/admin/content")({
@@ -33,8 +32,6 @@ function Content() {
   const qc = useQueryClient();
   const notifyContent = useServerFn(notifyNewAcademicContent);
   const uploadDrive = useServerFn(uploadDriveFile);
-  const sendUrgent = useServerFn(sendUrgentClassAlert);
-  const [urgentFor, setUrgentFor] = useState<string | null>(null);
   const departments = useQuery({
     queryKey: ["admin-departments"],
     queryFn: async () => (await supabase.from("departments").select("*").order("name")).data ?? [],
@@ -799,10 +796,8 @@ function Content() {
                 <p className="text-muted-foreground" dir="ltr">{session.starts_at.slice(0, 5)} – {session.ends_at.slice(0, 5)}{session.location ? ` · ${session.location}` : ""}{session.instructor ? ` · ${session.instructor}` : ""}</p>
               </div>
               <div className="flex gap-2">
-                <Button type="button" size="sm" variant="destructive" onClick={() => setUrgentFor(urgentFor === session.id ? null : session.id)}>🔔 إرسال تنبيه عاجل</Button>
                 <Button type="button" size="sm" variant="outline" onClick={() => void deleteClassSession(session.id)}>حذف</Button>
               </div>
-              {urgentFor === session.id && <UrgentAlertPanel session={session} send={sendUrgent} onDone={() => setUrgentFor(null)} />}
             </div>
           ))}
           {classSchedule.isSuccess && !classSchedule.data.length && <p className="p-3 text-sm text-muted-foreground">لم تتم إضافة حصص أسبوعية بعد.</p>}
