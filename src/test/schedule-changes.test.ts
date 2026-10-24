@@ -33,6 +33,15 @@ describe("schedule changes", () => {
     const changes = [change({}), change({ action: "restore", created_at: "2026-10-23T11:00:00Z" })];
     expect(occurrencesOn("2026-10-25", [sunday], changes)[0]?.status).toBe("normal");
   });
+  it("postponing all future Sundays moves each one to its following Monday", () => {
+    const changes = [change({ action: "postpone", scope: "onwards", new_date: "2026-10-26", new_starts_at: "12:00", new_ends_at: "14:00" })];
+    expect(remindersOn("2026-11-01", [sunday], changes)).toHaveLength(0);
+    expect(remindersOn("2026-11-02", [sunday], changes)[0]?.startsAt).toBe("12:00");
+  });
+  it("an occurrence postponed more than eight weeks is still shown at the new date", () => {
+    const changes = [change({ action: "postpone", new_date: "2027-01-04" })];
+    expect(remindersOn("2027-01-04", [sunday], changes)).toHaveLength(1);
+  });
   it("cancellation alert names the subject, day and time", () => {
     const a = buildChangeAlert({ action: "cancel", subject: "الاقتصاد", date: "2026-10-25", startsAt: "09:00", location: null, scope: "once", reason: "اعتذار الدكتور" });
     expect(a.body).toContain("الأحد 2026-10-25 الساعة 09:00");

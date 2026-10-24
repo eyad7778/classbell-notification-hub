@@ -293,6 +293,7 @@ function StudentHome() {
         <ErrorBox text={t("تعذّر تحميل بيانات لوحتك. أعد المحاولة.", "Could not load your dashboard. Try again.")} />
       ) : (
         <>
+          <ScheduleUpdates userId={userId} enabled={!!hasAccess} />
           <section aria-label={t("ملخص الدراسة", "Study overview")} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {summary.map((item) => (
               <div key={item.label} className={`rounded-xl border border-transparent p-4 ${item.color}`}>

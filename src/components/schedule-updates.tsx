@@ -8,7 +8,7 @@ export function useScheduleChanges(userId: string | undefined, enabled: boolean)
     queryKey: ["schedule-changes", userId], enabled,
     queryFn: async () => {
       const { data, error } = await supabase.from("class_schedule_changes")
-        .select("*").order("created_at", { ascending: false }).limit(1000);
+        .select("*, class_schedule(subjects(name))").order("created_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
@@ -26,10 +26,10 @@ export function ScheduleUpdates({ userId, enabled, limit = 5 }: { userId: string
   const t = useText();
   if (!enabled) return null;
   return <section className="mb-6">
-    <h2 className="mb-3 text-lg font-bold">{t("آخر تعديلات الجدول", "Latest timetable changes")}</h2>
+    <h2 className="mb-3 text-lg font-bold">{t("آخر تحديثات الجدول", "Latest timetable changes")}</h2>
     {q.isError ? <p role="alert" className="text-sm text-destructive">{t("تعذّر تحميل تعديلات الجدول", "Could not load timetable changes")}</p> : q.isPending ? <p className="text-sm text-muted-foreground">{t("جارٍ التحميل…", "Loading…")}</p> : !q.data.length ? <p className="text-sm text-muted-foreground">{t("لا توجد تعديلات", "No changes")}</p> :
     <ul className="divide-y border-y">{q.data.slice(0, limit).map((c) => <li key={c.id} className="py-3">
-      <p className="font-medium">{CHANGE_ACTIONS.find((a) => a.id === c.action)?.label} · {c.change_date}{c.scope === "onwards" ? t(" — والمواعيد القادمة", " — and future classes") : ""}</p>
+      <p className="font-medium">{c.class_schedule?.subjects?.name} · {CHANGE_ACTIONS.find((a) => a.id === c.action)?.label} · {c.change_date}{c.scope === "onwards" ? t(" — والمواعيد القادمة", " — and future classes") : ""}</p>
       <p className="mt-1 text-sm text-muted-foreground">{[c.new_date, c.new_starts_at?.slice(0,5), c.new_location, c.new_instructor, c.reason].filter(Boolean).join(" · ")}</p>
       <time className="text-xs text-muted-foreground">{new Date(c.created_at).toLocaleString("ar-EG", { timeZone: "Africa/Cairo" })}</time>
     </li>)}</ul>}

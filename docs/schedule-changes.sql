@@ -20,7 +20,7 @@ create table if not exists public.class_schedule_changes (
   telegram_failed integer not null default 0,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
-  check (action <> 'postpone' or (scope = 'once' and new_date > change_date)),
+  check (action <> 'postpone' or (new_date is not null and new_date > change_date)),
   check (action not in ('time','postpone') or (new_starts_at is not null and new_ends_at > new_starts_at))
 );
 grant select on public.class_schedule_changes to authenticated;
@@ -34,3 +34,14 @@ using (
   or (public.has_access(auth.uid()) and public.matches_content_target(auth.uid(), target_department_ids, target_levels))
 );
 create index if not exists schedule_changes_date_idx on public.class_schedule_changes(session_id, change_date, created_at);
+
+-- Per-user/date claims prevent overlapping daily runs from sending duplicates.
+create table if not exists public.class_reminder_deliveries (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  run_date date not null,
+  status text not null default 'processing' check (status in ('processing','sent','failed')),
+  created_at timestamptz not null default now(),
+  primary key (user_id, run_date)
+);
+grant all on public.class_reminder_deliveries to service_role;
+alter table public.class_reminder_deliveries enable row level security;

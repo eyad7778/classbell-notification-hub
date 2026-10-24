@@ -87,7 +87,13 @@ function resolveRegular(session: Session, changes: Change[], date: string): Occu
     if (c.action === "note") continue;
     o.reason = c.reason;
     if (c.action === "cancel") { o.status = "cancelled"; o.movedTo = null; }
-    else if (c.action === "postpone") { o.status = "postponed"; o.movedTo = c.new_date; if (c.new_starts_at) o.startsAt = c.new_starts_at.slice(0, 5); if (c.new_ends_at) o.endsAt = c.new_ends_at.slice(0, 5); }
+    else if (c.action === "postpone") {
+      o.status = "postponed";
+      const offset = c.new_date ? Math.round((new Date(`${c.new_date}T12:00:00Z`).getTime() - new Date(`${c.change_date}T12:00:00Z`).getTime()) / 86_400_000) : 0;
+      o.movedTo = c.scope === "onwards" ? addDays(date, offset) : c.new_date;
+      if (c.new_starts_at) o.startsAt = c.new_starts_at.slice(0, 5);
+      if (c.new_ends_at) o.endsAt = c.new_ends_at.slice(0, 5);
+    }
     else {
       if (o.status === "normal") o.status = "changed";
       if (c.action === "time") { if (c.new_starts_at) o.startsAt = c.new_starts_at.slice(0, 5); if (c.new_ends_at) o.endsAt = c.new_ends_at.slice(0, 5); }
@@ -103,9 +109,11 @@ export function occurrencesOn(date: string, sessions: Session[], changes: Change
   const sorted = [...changes].sort((a, b) => a.created_at.localeCompare(b.created_at));
   const list: Occurrence[] = sessions.filter((s) => s.day_of_week === weekdayOf(date)).map((s) => resolveRegular(s, sorted, date));
   for (const s of sessions) {
-    // Look back up to 8 weeks for a regular date postponed into `date`.
-    for (let w = 0; w <= 8 * 7; w += 1) {
-      const original = addDays(date, -w);
+    const originals = new Set(sorted.filter((c) => c.session_id === s.id && c.action === "postpone" && c.new_date).map((c) => {
+      const offset = Math.round((new Date(`${c.new_date}T12:00:00Z`).getTime() - new Date(`${c.change_date}T12:00:00Z`).getTime()) / 86_400_000);
+      return c.scope === "onwards" ? addDays(date, -offset) : c.change_date;
+    }));
+    for (const original of originals) {
       if (weekdayOf(original) !== s.day_of_week) continue;
       const o = resolveRegular(s, sorted, original);
       if (o.status === "postponed" && o.movedTo === date && original !== date) {

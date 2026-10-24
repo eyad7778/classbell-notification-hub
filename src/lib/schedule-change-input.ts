@@ -19,7 +19,7 @@ export const scheduleChangeInput = z.object({
   reason: z.string().trim().max(500).optional(),
 }).superRefine((v, ctx) => {
   const error = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message });
-  if (v.action === "postpone" && (v.scope !== "once" || !v.newDate || v.newDate <= v.date)) error("اختر موعدًا لاحقًا للتأجيل لمرة واحدة");
+  if (v.action === "postpone" && (!v.newDate || v.newDate <= v.date)) error("اختر موعدًا لاحقًا للتأجيل");
   if (["time", "postpone"].includes(v.action) && (!v.newStartsAt || !v.newEndsAt || v.newEndsAt <= v.newStartsAt)) error("وقت النهاية يجب أن يكون بعد البداية");
   if (v.action === "location" && !v.newLocation) error("اكتب المكان الجديد");
   if (v.action === "instructor" && !v.newInstructor) error("اكتب اسم المحاضر الجديد");
