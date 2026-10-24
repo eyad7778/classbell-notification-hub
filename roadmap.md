@@ -1,4 +1,6 @@
 # Smart Student roadmap
+- [ ] Complete urgent timetable changes and student updates; external database update and real Telegram delivery need live verification.
+- [ ] Explain Android/iPhone native app options without changing the web deployment.
 - [ ] Speed: reduce repeated data/auth requests, optimize image delivery, and verify public navigation; authenticated timing requires a real session.
 - [ ] Require signup ID image and first–fourth academic year, with resumable identity upload.
 - [ ] Require transfer receipt image and delete verification images automatically after the relevant approval.

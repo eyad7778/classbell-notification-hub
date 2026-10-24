@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { scheduleChangeInput } from "@/lib/schedule-change-input";
+import { buildChangeAlert, changeDedupeKey, weekdayOf } from "@/lib/schedule-changes";
 
 type Ctx = {
   supabase: {
@@ -182,6 +184,46 @@ export const notifyNewAcademicContent = createServerFn({ method: "POST" })
       groupFailed: telegram.groupFailed,
       groupConfigured: telegram.groupConfigured,
     };
+  });
+
+export const sendUrgentClassAlert = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => scheduleChangeInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const admin = await assertStaff(context as Ctx, false, "content");
+    const { data: session, error } = await admin.from("class_schedule")
+      .select("*, subjects(name)").eq("id", data.sessionId).maybeSingle();
+    if (error || !session) throw new Error("تعذّر تحميل المحاضرة");
+    if (weekdayOf(data.date) !== session.day_of_week) throw new Error("اختر تاريخًا يوافق يوم المحاضرة");
+    const { sha256Hex, deliverTelegram, escapeHtml } = await import("@/lib/telegram.server");
+    const key = await sha256Hex(changeDedupeKey(data.sessionId, data));
+    const { data: saved, error: saveError } = await admin.from("class_schedule_changes").insert({
+      session_id: session.id, change_date: data.date, scope: data.scope, action: data.action,
+      new_date: data.action === "postpone" ? data.newDate ?? null : null,
+      new_starts_at: ["time", "postpone"].includes(data.action) ? data.newStartsAt ?? null : null,
+      new_ends_at: ["time", "postpone"].includes(data.action) ? data.newEndsAt ?? null : null,
+      new_location: data.action === "location" ? data.newLocation ?? null : null,
+      new_instructor: data.action === "instructor" ? data.newInstructor ?? null : null,
+      reason: data.reason || null, target_department_ids: session.target_department_ids,
+      target_levels: session.target_levels, created_by: context.userId, dedupe_key: key,
+    }).select("id").single();
+    if (saveError?.code === "23505") throw new Error("هذا التعديل محفوظ بالفعل؛ لم يتم إرسال تنبيه مكرر");
+    if (saveError || !saved) throw new Error("تعذّر حفظ التعديل؛ تأكد من تطبيق تحديث بيانات الجدول");
+    if (!data.urgent) return { saved: true, recipients: 0, sent: 0, failed: 0, urgent: false };
+    const alert = buildChangeAlert({ ...data, subject: session.subjects?.name ?? "محاضرة", startsAt: session.starts_at, location: session.location });
+    const { data: n, error: notificationError } = await admin.from("notifications").insert({
+      ...alert, user_id: null, link: "/app/schedule", created_by: context.userId,
+      target_department_ids: session.target_department_ids, target_levels: session.target_levels,
+    }).select("id").single();
+    if (notificationError || !n) throw new Error("تم حفظ التعديل لكن تعذّر إنشاء الإشعار؛ أرسل التنبيه من صفحة الرسائل");
+    const ids = await eligibleTargetUsers(admin, session.target_department_ids, session.target_levels);
+    // Never broadcast targeted class changes to the shared group.
+    const delivery = await deliverTelegram(admin, ids, `<b>${escapeHtml(alert.title)}</b>\n${escapeHtml(alert.body)}`, n.id, null);
+    const { error: trackingError } = await admin.from("class_schedule_changes").update({
+      notification_id: n.id, recipients: ids.length, telegram_sent: delivery.sent, telegram_failed: delivery.failed,
+    }).eq("id", saved.id);
+    if (trackingError) console.error("Could not record schedule alert counts", { code: trackingError.code });
+    return { saved: true, recipients: ids.length, sent: delivery.sent, failed: delivery.failed, urgent: true };
   });
 
 export const uploadDriveFile = createServerFn({ method: "POST" })
