@@ -10,6 +10,7 @@ import { Card, fmtDate, kindLabel, PageTitle } from "@/components/app-ui";
 import { pageMeta } from "@/lib/meta";
 import { notifyNewAcademicContent, uploadDriveFile } from "@/lib/staff.functions";
 import { QuickAddLectures } from "@/components/quick-add-lectures";
+import { UrgentAlertPanel } from "@/components/urgent-alert-panel";
 
 export const Route = createFileRoute("/_authenticated/admin/content")({
   head: () => pageMeta("إدارة المحتوى", "المواد والمحاضرات والملفات والمواعيد."),
@@ -796,6 +797,7 @@ function Content() {
                 <p className="text-muted-foreground" dir="ltr">{session.starts_at.slice(0, 5)} – {session.ends_at.slice(0, 5)}{session.location ? ` · ${session.location}` : ""}{session.instructor ? ` · ${session.instructor}` : ""}</p>
               </div>
               <div className="flex gap-2">
+                <UrgentAlertPanel session={{ ...session, subject: session.subjects?.name ?? "محاضرة" }} />
                 <Button type="button" size="sm" variant="outline" onClick={() => void deleteClassSession(session.id)}>حذف</Button>
               </div>
             </div>
