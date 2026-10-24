@@ -199,11 +199,11 @@ export const sendUrgentClassAlert = createServerFn({ method: "POST" })
     const key = await sha256Hex(changeDedupeKey(data.sessionId, data));
     const { data: saved, error: saveError } = await admin.from("class_schedule_changes").insert({
       session_id: session.id, change_date: data.date, scope: data.scope, action: data.action,
-      new_date: data.action === "postpone" ? data.newDate : null,
-      new_starts_at: ["time", "postpone"].includes(data.action) ? data.newStartsAt : null,
-      new_ends_at: ["time", "postpone"].includes(data.action) ? data.newEndsAt : null,
-      new_location: data.action === "location" ? data.newLocation : null,
-      new_instructor: data.action === "instructor" ? data.newInstructor : null,
+      new_date: data.action === "postpone" ? data.newDate ?? null : null,
+      new_starts_at: ["time", "postpone"].includes(data.action) ? data.newStartsAt ?? null : null,
+      new_ends_at: ["time", "postpone"].includes(data.action) ? data.newEndsAt ?? null : null,
+      new_location: data.action === "location" ? data.newLocation ?? null : null,
+      new_instructor: data.action === "instructor" ? data.newInstructor ?? null : null,
       reason: data.reason || null, target_department_ids: session.target_department_ids,
       target_levels: session.target_levels, created_by: context.userId, dedupe_key: key,
     }).select("id").single();

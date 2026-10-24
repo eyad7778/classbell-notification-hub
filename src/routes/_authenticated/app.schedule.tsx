@@ -6,6 +6,9 @@ import { useMe } from "@/hooks/use-me";
 import { AccessGate, Card, Empty, ErrorBox, fmtDate, kindLabel, Loading, PageTitle } from "@/components/app-ui";
 import { pageMeta } from "@/lib/meta";
 import { useText } from "@/hooks/use-preferences";
+import { Button } from "@/components/ui/button";
+import { asChanges, ScheduleUpdates, useScheduleChanges } from "@/components/schedule-updates";
+import { addDays, cairoToday, occurrencesOn, weekdayOf } from "@/lib/schedule-changes";
 
 export const Route = createFileRoute("/_authenticated/app/schedule")({
   head: () => pageMeta("المواعيد", "مواعيد المحاضرات والامتحانات والتكليفات."),
@@ -23,6 +26,7 @@ function Schedule() {
   const me = useMe();
   const t = useText();
   const [tab, setTab] = useState<string>("all");
+  const changes = useScheduleChanges(me.data?.id, !!me.data?.hasAccess);
   const q = useQuery({
     queryKey: ["events"],
     enabled: !!me.data?.hasAccess,
@@ -48,6 +52,7 @@ function Schedule() {
   return (
     <div>
       <PageTitle title={t("المواعيد والامتحانات", "Schedule and exams")} />
+      <ScheduleUpdates userId={me.data?.id} enabled={!!me.data?.hasAccess} limit={20} />
       <section className="mb-8">
         <div className="mb-3 flex items-end justify-between gap-3">
           <div>
@@ -63,22 +68,28 @@ function Schedule() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {weekDays.map(([day, englishDay], dayIndex) => {
-              const sessions = (weekly.data ?? []).filter((session) => session.day_of_week === dayIndex);
+              const today = cairoToday();
+              const date = addDays(today, (dayIndex - weekdayOf(today) + 7) % 7);
+              const sessions = occurrencesOn(date, (weekly.data ?? []).map((session) => ({ ...session, subject: session.subjects?.name ?? t("محاضرة", "Class") })), asChanges(changes.data ?? []));
               return (
                 <Card key={day} className={sessions.length ? "border-primary/20" : "opacity-75"}>
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="font-bold">{t(day, englishDay)}</h3>
                     <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{sessions.length}</span>
                   </div>
+                  <p className="mb-2 text-xs text-muted-foreground">{date}</p>
+                  {changes.isError && <p role="alert" className="mb-2 text-xs text-destructive">{t("حالة التعديلات غير متاحة", "Change status unavailable")}</p>}
                   {sessions.length ? (
                     <ul className="space-y-2">
                       {sessions.map((session) => (
-                        <li key={session.id} className="rounded-xl bg-muted/70 p-3">
-                          <p className="font-semibold">{(session.subjects as { name: string } | null)?.name ?? t("محاضرة", "Class")}</p>
-                          <p className="mt-1 text-sm font-medium text-primary" dir="ltr">{session.starts_at.slice(0, 5)} – {session.ends_at.slice(0, 5)}</p>
+                        <li key={`${session.sessionId}-${session.movedTo ?? date}`} className="rounded-md bg-muted/70 p-3">
+                          <p className="font-semibold">{session.subject}</p>
+                          {session.status !== "normal" && <p className={`mt-1 text-xs font-bold ${session.status === "cancelled" ? "text-destructive" : "text-warning"}`}>{session.status === "cancelled" ? t("ملغاة", "Cancelled") : session.status === "postponed" ? `${t("مؤجلة إلى", "Postponed to")} ${session.movedTo}` : session.status === "moved_here" ? t("موعد بعد التأجيل", "Rescheduled") : t("تم التعديل", "Updated")}</p>}
+                          <p className={`mt-1 text-sm font-medium text-primary ${session.status === "cancelled" || session.status === "postponed" ? "line-through" : ""}`} dir="ltr">{session.startsAt} – {session.endsAt}</p>
                           {(session.location || session.instructor) && (
                             <p className="mt-1 text-xs text-muted-foreground">{[session.location, session.instructor].filter(Boolean).join(" · ")}</p>
                           )}
+                          {session.reason && <p className="mt-1 text-xs text-muted-foreground">{session.reason}</p>}
                         </li>
                       ))}
                     </ul>
@@ -92,7 +103,7 @@ function Schedule() {
       <h2 className="mb-3 text-lg font-bold">{t("المواعيد والامتحانات", "Upcoming events")}</h2>
       <div className="mb-4 flex flex-wrap gap-2">
         {tabs.map(([k, l, englishLabel]) => (
-          <button key={k} onClick={() => setTab(k)} className={`rounded-full px-4 py-1.5 text-sm ${tab === k ? "bg-primary text-primary-foreground" : "bg-muted"}`}>{t(l, englishLabel)}</button>
+          <Button key={k} onClick={() => setTab(k)} variant={tab === k ? "default" : "secondary"} size="sm">{t(l, englishLabel)}</Button>
         ))}
       </div>
       {list.length === 0 ? <Empty title={t("لا توجد مواعيد قادمة", "No upcoming events")} /> : (

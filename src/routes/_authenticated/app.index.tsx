@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { statusLabel, useMe } from "@/hooks/use-me";
 import { AccessGate, Card, ErrorBox, fmtDate, kindLabel, Loading } from "@/components/app-ui";
 import { useText } from "@/hooks/use-preferences";
+import { ScheduleUpdates } from "@/components/schedule-updates";
 
 export const Route = createFileRoute("/_authenticated/app/")({
   head: () => ({
