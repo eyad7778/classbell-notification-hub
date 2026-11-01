@@ -30,6 +30,7 @@ import { Route as AuthenticatedAppSubscriptionRouteImport } from './routes/_auth
 import { Route as AuthenticatedAppTelegramRouteImport } from './routes/_authenticated/app.telegram'
 import { Route as AuthenticatedAppSubjectsIndexRouteImport } from './routes/_authenticated/app.subjects.index'
 import { Route as AuthenticatedAppSubjectsIdRouteImport } from './routes/_authenticated/app.subjects.$id'
+import { Route as ApiPublicCronDailyRemindersRouteImport } from './routes/api/public/cron/daily-reminders'
 import { Route as ApiPublicDriveActionRouteImport } from './routes/api/public/drive.$action'
 import { Route as ApiPublicTelegramWebhookRouteImport } from './routes/api/public/telegram/webhook'
 
@@ -148,6 +149,12 @@ const AuthenticatedAppSubjectsIdRoute =
     path: '/subjects/$id',
     getParentRoute: () => AuthenticatedAppRoute,
   } as any)
+const ApiPublicCronDailyRemindersRoute =
+  ApiPublicCronDailyRemindersRouteImport.update({
+    id: '/api/public/cron/daily-reminders',
+    path: '/api/public/cron/daily-reminders',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicDriveActionRoute = ApiPublicDriveActionRouteImport.update({
   id: '/api/public/drive/$action',
   path: '/api/public/drive/$action',
@@ -180,6 +187,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/app/': typeof AuthenticatedAppIndexRoute
   '/app/subjects/$id': typeof AuthenticatedAppSubjectsIdRoute
+  '/api/public/cron/daily-reminders': typeof ApiPublicCronDailyRemindersRoute
   '/api/public/drive/$action': typeof ApiPublicDriveActionRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
   '/app/subjects/': typeof AuthenticatedAppSubjectsIndexRoute
@@ -202,6 +210,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/app': typeof AuthenticatedAppIndexRoute
   '/app/subjects/$id': typeof AuthenticatedAppSubjectsIdRoute
+  '/api/public/cron/daily-reminders': typeof ApiPublicCronDailyRemindersRoute
   '/api/public/drive/$action': typeof ApiPublicDriveActionRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
   '/app/subjects': typeof AuthenticatedAppSubjectsIndexRoute
@@ -228,6 +237,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/app/': typeof AuthenticatedAppIndexRoute
   '/_authenticated/app/subjects/$id': typeof AuthenticatedAppSubjectsIdRoute
+  '/api/public/cron/daily-reminders': typeof ApiPublicCronDailyRemindersRoute
   '/api/public/drive/$action': typeof ApiPublicDriveActionRoute
   '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
   '/_authenticated/app/subjects/': typeof AuthenticatedAppSubjectsIndexRoute
@@ -254,6 +264,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/app/'
     | '/app/subjects/$id'
+    | '/api/public/cron/daily-reminders'
     | '/api/public/drive/$action'
     | '/api/public/telegram/webhook'
     | '/app/subjects/'
@@ -276,6 +287,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/app/subjects/$id'
+    | '/api/public/cron/daily-reminders'
     | '/api/public/drive/$action'
     | '/api/public/telegram/webhook'
     | '/app/subjects'
@@ -301,6 +313,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/'
     | '/_authenticated/app/'
     | '/_authenticated/app/subjects/$id'
+    | '/api/public/cron/daily-reminders'
     | '/api/public/drive/$action'
     | '/api/public/telegram/webhook'
     | '/_authenticated/app/subjects/'
@@ -313,6 +326,7 @@ export interface RootRouteChildren {
   DesignerRoute: typeof DesignerRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
+  ApiPublicCronDailyRemindersRoute: typeof ApiPublicCronDailyRemindersRoute
   ApiPublicDriveActionRoute: typeof ApiPublicDriveActionRoute
   ApiPublicTelegramWebhookRoute: typeof ApiPublicTelegramWebhookRoute
 }
@@ -466,6 +480,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppSubjectsIdRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/api/public/cron/daily-reminders': {
+      id: '/api/public/cron/daily-reminders'
+      path: '/api/public/cron/daily-reminders'
+      fullPath: '/api/public/cron/daily-reminders'
+      preLoaderRoute: typeof ApiPublicCronDailyRemindersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/drive/$action': {
       id: '/api/public/drive/$action'
       path: '/api/public/drive/$action'
@@ -547,6 +568,7 @@ const rootRouteChildren: RootRouteChildren = {
   DesignerRoute: DesignerRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
+  ApiPublicCronDailyRemindersRoute: ApiPublicCronDailyRemindersRoute,
   ApiPublicDriveActionRoute: ApiPublicDriveActionRoute,
   ApiPublicTelegramWebhookRoute: ApiPublicTelegramWebhookRoute,
 }
