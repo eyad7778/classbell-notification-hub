@@ -12,3 +12,6 @@
 - Telegram token creation accepts the same service credential override as the admin client; webhook storage errors return retryable failures rather than falsely reporting an invalid token.
 - Create the query cache per router with short freshness windows and intent preloading; this avoids repeated navigation requests without sharing SSR user data.
 - Client navigation and profile queries read the local auth session; authorization remains enforced by database RLS and authenticated server functions, avoiding redundant auth network calls.
+- Schedule changes are immutable occurrence overlays; student timetables and daily reminders share the same resolver to keep cancellations consistent.
+- Daily reminders use a secret-authenticated cron, database has_access() recipient selection, and per-user/date claims; only explicitly failed sends are retryable to avoid ambiguous duplicates.
+- External schema additions have supplemental types until managed schema regeneration is available; never edit generated database types.
