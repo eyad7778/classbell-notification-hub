@@ -6,6 +6,12 @@ import type { ReminderRecipient } from "@/lib/daily-reminders";
 type ScheduleDatabase = Omit<Database, "public"> & {
   public: Omit<Database["public"], "Tables" | "Functions"> & {
     Tables: Database["public"]["Tables"] & {
+      class_schedule_alert_deliveries: {
+        Row: { change_id: string; user_id: string; status: string; created_at: string };
+        Insert: { change_id: string; user_id: string; status?: string; created_at?: string };
+        Update: { status?: string };
+        Relationships: [];
+      };
       class_reminder_deliveries: {
         Row: { user_id: string; run_date: string; status: string; created_at: string };
         Insert: { user_id: string; run_date: string; status?: string; created_at?: string };

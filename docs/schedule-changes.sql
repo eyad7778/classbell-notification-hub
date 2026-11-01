@@ -58,3 +58,13 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.schedule_reminder_recipients(integer, integer) from public, anon, authenticated;
 grant execute on function public.schedule_reminder_recipients(integer, integer) to service_role;
+
+create table if not exists public.class_schedule_alert_deliveries (
+  change_id uuid not null references public.class_schedule_changes(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'processing' check (status in ('processing','sent','failed')),
+  created_at timestamptz not null default now(),
+  primary key (change_id, user_id)
+);
+grant all on public.class_schedule_alert_deliveries to service_role;
+alter table public.class_schedule_alert_deliveries enable row level security;

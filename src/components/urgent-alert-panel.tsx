@@ -29,6 +29,7 @@ export function UrgentAlertPanel({ session }: { session: Session }) {
         newDate: value("newDate"), newStartsAt: value("newStartsAt"), newEndsAt: value("newEndsAt"),
         newLocation: value("newLocation"), newInstructor: value("newInstructor"), reason: value("reason") } });
       toast.success(result.urgent ? `تم حفظ التعديل؛ وصل التنبيه إلى ${result.sent} من ${result.recipients} طالب` : "تم حفظ تعديل الجدول");
+      if ("deliveryError" in result && result.deliveryError) toast.warning("التعديل محفوظ؛ تعذّر تجهيز التنبيه، أعد المحاولة من سجل التعديلات");
       if (result.failed) toast.warning(`تعذّر إرسال Telegram إلى ${result.failed} طالب؛ راجع سجل الرسائل`);
       await qc.invalidateQueries();
       setOpen(false);
@@ -36,7 +37,7 @@ export function UrgentAlertPanel({ session }: { session: Session }) {
     finally { setBusy(false); }
   }
   return <>
-    <Button variant="outline" size="sm" onClick={() => { setDate(nextDateForDay(session.day_of_week, cairoToday())); setOpen(true); }}><BellRing className="size-4" />إرسال تنبيه عاجل</Button>
+    <Button variant="outline" size="sm" onClick={() => { setDate(nextDateForDay(session.day_of_week, cairoToday())); setPreview(""); setOpen(true); }}><BellRing className="size-4" />إرسال تنبيه عاجل</Button>
     <Dialog open={open} onOpenChange={(v) => { if (!busy) setOpen(v); }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto">
         <DialogHeader><DialogTitle>تعديل محاضرة {session.subject}</DialogTitle></DialogHeader>
