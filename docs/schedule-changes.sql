@@ -45,3 +45,26 @@ create table if not exists public.class_reminder_deliveries (
 );
 grant all on public.class_reminder_deliveries to service_role;
 alter table public.class_reminder_deliveries enable row level security;
+
+create or replace function public.schedule_reminder_recipients(_offset integer default 0, _limit integer default 100)
+returns table(user_id uuid, department_id uuid, level text)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.department_id, p.level from public.profiles p
+  where public.has_access(p.id)
+    and exists (select 1 from public.user_roles r where r.user_id = p.id and r.role = 'student')
+    and not public.is_staff(p.id)
+    and exists (select 1 from public.telegram_links t where t.user_id = p.id and not t.blocked)
+  order by p.id limit greatest(1, least(_limit, 100)) offset greatest(0, _offset)
+$$;
+revoke all on function public.schedule_reminder_recipients(integer, integer) from public, anon, authenticated;
+grant execute on function public.schedule_reminder_recipients(integer, integer) to service_role;
+
+create table if not exists public.class_schedule_alert_deliveries (
+  change_id uuid not null references public.class_schedule_changes(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'processing' check (status in ('processing','sent','failed')),
+  created_at timestamptz not null default now(),
+  primary key (change_id, user_id)
+);
+grant all on public.class_schedule_alert_deliveries to service_role;
+alter table public.class_schedule_alert_deliveries enable row level security;
