@@ -195,8 +195,12 @@ export const sendUrgentClassAlert = createServerFn({ method: "POST" })
       .select("*, subjects(name)").eq("id", data.sessionId).maybeSingle();
     if (error || !session) throw new Error("تعذّر تحميل المحاضرة");
     if (weekdayOf(data.date) !== session.day_of_week) throw new Error("اختر تاريخًا يوافق يوم المحاضرة");
-    const { sha256Hex, deliverTelegram, escapeHtml } = await import("@/lib/telegram.server");
+    const { sha256Hex } = await import("@/lib/telegram.server");
+    const { data: previous, error: historyError } = await admin.from("class_schedule_changes")
+      .select("id, dedupe_key").eq("session_id", session.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (historyError) throw new Error("تعذّر تحميل سجل التعديلات؛ طبّق تحديث بيانات الجدول");
     const key = await sha256Hex(changeDedupeKey(data.sessionId, data));
+    if (previous?.dedupe_key.startsWith(`${key}:`)) throw new Error("هذا التعديل محفوظ بالفعل؛ لم يتم إرسال تنبيه مكرر");
     const { data: saved, error: saveError } = await admin.from("class_schedule_changes").insert({
       session_id: session.id, change_date: data.date, scope: data.scope, action: data.action,
       new_date: data.action === "postpone" ? data.newDate ?? null : null,
@@ -205,25 +209,37 @@ export const sendUrgentClassAlert = createServerFn({ method: "POST" })
       new_location: data.action === "location" ? data.newLocation ?? null : null,
       new_instructor: data.action === "instructor" ? data.newInstructor ?? null : null,
       reason: data.reason || null, target_department_ids: session.target_department_ids,
-      target_levels: session.target_levels, created_by: context.userId, dedupe_key: key,
+      target_levels: session.target_levels, created_by: context.userId, dedupe_key: `${key}:${previous?.id ?? "initial"}`,
     }).select("id").single();
     if (saveError?.code === "23505") throw new Error("هذا التعديل محفوظ بالفعل؛ لم يتم إرسال تنبيه مكرر");
     if (saveError || !saved) throw new Error("تعذّر حفظ التعديل؛ تأكد من تطبيق تحديث بيانات الجدول");
     if (!data.urgent) return { saved: true, recipients: 0, sent: 0, failed: 0, urgent: false };
     const alert = buildChangeAlert({ ...data, subject: session.subjects?.name ?? "محاضرة", startsAt: session.starts_at, location: session.location });
-    const { data: n, error: notificationError } = await admin.from("notifications").insert({
-      ...alert, user_id: null, link: "/app/schedule", created_by: context.userId,
-      target_department_ids: session.target_department_ids, target_levels: session.target_levels,
-    }).select("id").single();
-    if (notificationError || !n) throw new Error("تم حفظ التعديل لكن تعذّر إنشاء الإشعار؛ أرسل التنبيه من صفحة الرسائل");
     const ids = await eligibleTargetUsers(admin, session.target_department_ids, session.target_levels);
-    // Never broadcast targeted class changes to the shared group.
-    const delivery = await deliverTelegram(admin, ids, `<b>${escapeHtml(alert.title)}</b>\n${escapeHtml(alert.body)}`, n.id, null);
-    const { error: trackingError } = await admin.from("class_schedule_changes").update({
-      notification_id: n.id, recipients: ids.length, telegram_sent: delivery.sent, telegram_failed: delivery.failed,
-    }).eq("id", saved.id);
-    if (trackingError) console.error("Could not record schedule alert counts", { code: trackingError.code });
-    return { saved: true, recipients: ids.length, sent: delivery.sent, failed: delivery.failed, urgent: true };
+    const { deliverScheduleAlert } = await import("@/lib/schedule-alert.server");
+    return { saved: true, urgent: true, ...await deliverScheduleAlert(admin, saved.id, ids, alert, context.userId) };
+  });
+
+export const retryUrgentClassAlert = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ changeId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const admin = await assertStaff(context as Ctx, false, "content");
+    const { data: change, error } = await admin.from("class_schedule_changes").select("*, class_schedule(*, subjects(name))").eq("id", data.changeId).maybeSingle();
+    if (error || !change?.class_schedule) throw new Error("تعذّر تحميل التعديل");
+    const session = change.class_schedule;
+    const { data: later, error: laterError } = await admin.from("class_schedule_changes").select("id")
+      .eq("session_id", change.session_id).gt("created_at", change.created_at).limit(1);
+    if (laterError) throw new Error("تعذّر التحقق من أحدث تعديل");
+    if (later?.length) throw new Error("لا يمكن إعادة إرسال تعديل قديم بعد إضافة تعديل أحدث للمحاضرة");
+    const alert = buildChangeAlert({ action: change.action as import("@/lib/schedule-changes").ChangeAction,
+      date: change.change_date, scope: change.scope as "once" | "onwards", subject: session.subjects?.name ?? "محاضرة",
+      startsAt: session.starts_at, location: session.location, newDate: change.new_date ?? undefined,
+      newStartsAt: change.new_starts_at?.slice(0, 5), newEndsAt: change.new_ends_at?.slice(0, 5),
+      newLocation: change.new_location ?? undefined, newInstructor: change.new_instructor ?? undefined, reason: change.reason ?? undefined });
+    const ids = await eligibleTargetUsers(admin, change.target_department_ids, change.target_levels);
+    const { deliverScheduleAlert } = await import("@/lib/schedule-alert.server");
+    return deliverScheduleAlert(admin, change.id, ids, alert, context.userId);
   });
 
 export const uploadDriveFile = createServerFn({ method: "POST" })
