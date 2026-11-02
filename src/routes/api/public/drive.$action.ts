@@ -36,7 +36,8 @@ async function authorize(request: Request) {
   const { data, error } = await sb.auth.getClaims(token);
   const uid = data?.claims?.sub;
   if (error || !uid) throw new Error("سجّل الدخول أولًا");
-  const { data: owner } = await sb.rpc("has_role", { _user_id: uid, _role: "owner" });
+  const { data: ownerRows } = await (sb as any).from("user_roles").select("role").eq("user_id", uid).eq("role", "owner");
+  const owner = (ownerRows ?? []).length > 0;
   if (owner) return;
   const { data: perm } = await sb.rpc("has_staff_permission", { _user_id: uid, _permission: "content" });
   if (!perm) throw new Error("غير مصرح لك برفع المحاضرات");
