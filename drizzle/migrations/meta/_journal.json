@@ -78,6 +78,13 @@
       "when": 1792700000000,
       "tag": "0010_schedule_changes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793557769292,
+      "tag": "0011_subscription_plans_and_notification_cleanup",
+      "breakpoints": true
     }
   ]
 }

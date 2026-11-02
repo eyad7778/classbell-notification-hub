@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -38,7 +38,7 @@ function TelegramPage() {
 
   if (me.isLoading) return <Loading />;
   if (!me.data) return <ErrorBox />;
-  const { tg, status, isStaff } = me.data;
+  const { tg } = me.data;
 
   async function link() {
     setErr("");
@@ -62,7 +62,7 @@ function TelegramPage() {
 
   return (
     <div className="mx-auto max-w-xl">
-      <PageTitle title={t("ربط Telegram", "Connect Telegram")} subtitle={t("الربط إلزامي لتصلك إشعارات المحاضرات والإعلانات والامتحانات.", "Linking is required to receive lecture, announcement, and exam notifications.")} />
+      <PageTitle title={t("إعدادات الإشعارات", "Notification settings")} subtitle={t("ربط Telegram اختياري، ويمكنك إتمامه في أي وقت.", "Telegram linking is optional and can be completed at any time.")} />
       {tg ? (
         <Card>
           <div className="flex items-center gap-3">
@@ -83,14 +83,11 @@ function TelegramPage() {
           </Button>
           <p className="mt-3 text-xs text-muted-foreground">{t("فصل الربط يتم عن طريق الإدارة فقط.", "Only an administrator can unlink your account.")}</p>
         </Card>
-      ) : status !== "active" && !isStaff ? (
-        <Card className="text-center">
-          <p className="font-semibold">{t("فعّل اشتراكك أولًا", "Activate your subscription first")}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{t("يظهر زر الربط بعد تفعيل الاشتراك من الإدارة.", "The linking button appears after the administration activates your subscription.")}</p>
-          <Button asChild className="mt-4"><Link to="/app/subscription">{t("صفحة الاشتراك", "Subscription page")}</Link></Button>
-        </Card>
       ) : (
         <Card>
+          <p className="mb-4 text-sm text-muted-foreground">
+            {t("يمكنك استخدام حسابك دون Telegram. وفق سياسة الوصول الحالية، يتطلب المحتوى الدراسي المدفوع اشتراكًا نشطًا وربط Telegram.", "You can use your account without Telegram. Under the current access policy, paid study content requires an active subscription and a linked Telegram account.")}
+          </p>
           <ol className="space-y-3 text-sm leading-7">
             <li>1. {t("اضغط الزر بالأسفل ليفتح بوت المشروع في Telegram.", "Press the button below to open the Telegram bot.")}</li>
             <li>2. {t("اضغط", "Press")} <b>Start</b> {t("داخل المحادثة.", "in the chat.")}</li>

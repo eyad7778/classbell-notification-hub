@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { Bell, Loader2 } from "lucide-react";
+import { Bell, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/use-me";
@@ -30,14 +30,16 @@ function Notifications() {
   const [pushConnected, setPushConnected] = useState(false);
   const [pushMessage, setPushMessage] = useState("");
   const [pushError, setPushError] = useState("");
+  const [notificationError, setNotificationError] = useState("");
   const q = useQuery({
     queryKey: ["notifications"],
     enabled: !!me.data,
     queryFn: async () => {
       const [n, r] = await Promise.all([
         supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100),
-        supabase.from("notification_reads").select("notification_id"),
+        supabase.from("notification_reads").select("notification_id").eq("user_id", me.data!.id),
       ]);
+      if (n.error || r.error) throw n.error ?? r.error;
       const read = new Set((r.data ?? []).map((x) => x.notification_id));
       return (n.data ?? []).map((x) => ({ ...x, read: read.has(x.id) }));
     },
@@ -45,9 +47,29 @@ function Notifications() {
   async function markAll() {
     const unread = (q.data ?? []).filter((x) => !x.read);
     if (!unread.length || !me.data) return;
-    await supabase.from("notification_reads").upsert(unread.map((x) => ({ notification_id: x.id, user_id: me.data!.id })), { onConflict: "notification_id,user_id", ignoreDuplicates: true });
+    setNotificationError("");
+    const { error } = await supabase.from("notification_reads").upsert(unread.map((x) => ({ notification_id: x.id, user_id: me.data!.id })), { onConflict: "notification_id,user_id", ignoreDuplicates: true });
+    if (error) {
+      setNotificationError(t("تعذّر تحديث حالة الإشعارات.", "Could not update notification status."));
+      return;
+    }
     qc.invalidateQueries({ queryKey: ["notifications"] });
     qc.invalidateQueries({ queryKey: ["unread"] });
+  }
+
+  async function markOne(notificationId: string) {
+    if (!me.data) return;
+    setNotificationError("");
+    const { error } = await supabase.from("notification_reads").upsert(
+      { notification_id: notificationId, user_id: me.data.id },
+      { onConflict: "notification_id,user_id", ignoreDuplicates: true },
+    );
+    if (error) {
+      setNotificationError(t("تعذّر تحديث حالة الإشعار.", "Could not update notification status."));
+      return;
+    }
+    await qc.invalidateQueries({ queryKey: ["notifications"] });
+    await qc.invalidateQueries({ queryKey: ["unread"] });
   }
 
   async function connectDevice() {
@@ -97,10 +119,12 @@ function Notifications() {
     }
   }
   if (q.isLoading || me.isLoading) return <Loading />;
+  if (q.isError) return <p role="alert" className="text-sm text-destructive">{t("تعذّر تحميل الإشعارات. أعد تحميل الصفحة.", "Could not load notifications. Reload the page.")}</p>;
   const list = q.data ?? [];
   return (
     <div>
       <PageTitle title={t("الإشعارات", "Notifications")} action={list.some((x) => !x.read) && <Button variant="outline" size="sm" onClick={markAll}>{t("تعليم الكل كمقروء", "Mark all as read")}</Button>} />
+      {notificationError && <p role="alert" className="mb-3 text-sm text-destructive">{notificationError}</p>}
       <Card className="mb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -118,6 +142,34 @@ function Notifications() {
         {pushMessage && <p role="status" className="mt-3 text-sm text-success">{pushMessage}</p>}
         {pushError && <p role="alert" className="mt-3 text-sm text-destructive">{pushError}</p>}
       </Card>
+      <Card className="mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-bold">{t("الإعلانات والأخبار", "Announcements and news")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t("الإعلانات العامة منفصلة عن إشعارات حسابك الشخصية.", "Public announcements are separate from personal account notifications.")}
+            </p>
+          </div>
+          <Button asChild variant="outline">
+            <Link to="/app/announcements">{t("عرض الإعلانات", "View announcements")}</Link>
+          </Button>
+        </div>
+      </Card>
+      <Card className="mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-bold">{t("إعدادات الإشعارات", "Notification settings")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {me.data?.tg
+                ? t("حالة Telegram: مرتبط", "Telegram status: linked")
+                : t("حالة Telegram: غير مرتبط. الربط اختياري ويمكنك إتمامه لاحقًا.", "Telegram status: not linked. Linking is optional and can be done later.")}
+            </p>
+          </div>
+          <Button asChild variant="outline">
+            <Link to="/app/telegram"><Send className="size-4" />{t(me.data?.tg ? "إدارة الربط" : "ربط Telegram اختياريًا", me.data?.tg ? "Manage link" : "Optionally link Telegram")}</Link>
+          </Button>
+        </div>
+      </Card>
       {list.length === 0 ? <Empty title={t("لا توجد إشعارات", "No notifications yet")} /> : (
         <div className="space-y-2">
           {list.map((n) => (
@@ -128,6 +180,11 @@ function Notifications() {
               </div>
               <p className="mt-1 whitespace-pre-line text-sm">{n.body}</p>
               {n.link?.startsWith("/app") && <Link to={n.link} className="mt-2 inline-block text-sm text-primary">{t("عرض", "Open")}</Link>}
+              {!n.read && (
+                <Button className="mt-2" size="sm" variant="outline" onClick={() => markOne(n.id)}>
+                  {t("تعليم كمقروء", "Mark as read")}
+                </Button>
+              )}
             </Card>
           ))}
         </div>

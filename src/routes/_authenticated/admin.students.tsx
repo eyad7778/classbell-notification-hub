@@ -10,6 +10,7 @@ import { effectiveStatus, statusLabel, useMe, type SubStatus } from "@/hooks/use
 import {
   resetStudentPassword,
   reviewStudentRegistration,
+  retrySubscriptionNotification,
   setStaffRole,
   setSubscriptionStatus,
   unlinkTelegram,
@@ -31,6 +32,7 @@ function Students() {
   const unlink = useServerFn(unlinkTelegram);
   const staffRole = useServerFn(setStaffRole);
   const reviewRegistration = useServerFn(reviewStudentRegistration);
+  const retrySubscriptionNotice = useServerFn(retrySubscriptionNotification);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<string>("all");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
@@ -73,11 +75,17 @@ function Students() {
 
   async function run(fn: () => Promise<unknown>, ok: string) {
     try {
-      await fn();
-      toast.success(ok);
+      const result = await fn();
+      if (typeof result === "object" && result !== null &&
+        "notificationError" in result && result.notificationError === true) {
+        toast.error("تم التحديث لكن تعذّر حفظ الإشعار. أعد المحاولة من صفحة الطلاب.");
+      } else {
+        toast.success(ok);
+      }
       qc.invalidateQueries();
     } catch (e) {
       toast.error((e as Error).message);
+      qc.invalidateQueries({ queryKey: ["admin-students"] });
     }
   }
 
@@ -205,11 +213,37 @@ function Students() {
                     disabled={!x.id_card_path}
                     onClick={() => run(
                       () => reviewRegistration({ data: { userId: x.id } }),
-                      "تم تفعيل الحساب وحذف صورة الكارنيه",
+                      "تم تفعيل الحساب وإرسال الإشعار",
                     )}
                   >
                     تفعيل الحساب وحذف الصورة
                   </Button>
+                </div>
+              )}
+              {x.registration_status === "active" && !x.roles.includes("owner") && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => run(
+                      () => reviewRegistration({ data: { userId: x.id, retryNotification: true } }),
+                      "تمت إعادة محاولة إشعار تفعيل الحساب",
+                    )}
+                  >
+                    إعادة محاولة إشعار التفعيل
+                  </Button>
+                  {x.status === "active" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => run(
+                        () => retrySubscriptionNotice({ data: { userId: x.id } }),
+                        "تمت إعادة محاولة إشعار الاشتراك",
+                      )}
+                    >
+                      إعادة محاولة إشعار الاشتراك
+                    </Button>
+                  )}
                 </div>
               )}
               <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">

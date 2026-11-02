@@ -49,8 +49,12 @@ function AdminHome() {
   async function act(id: string, approve: boolean) {
     setBusy(id);
     try {
-      await review({ data: { id, approve, note: notes[id] || undefined } });
-      toast.success(approve ? "تم التفعيل وإشعار الطالب" : "تم الرفض وإشعار الطالب");
+      const result = await review({ data: { id, approve, note: notes[id] || undefined } });
+      if ("notificationError" in result && result.notificationError) {
+        toast.error("تم تحديث حالة الاشتراك، لكن تعذّر حفظ الإشعار. أعد المحاولة من صفحة الطلاب.");
+      } else {
+        toast.success(approve ? "تم التفعيل وإشعار الطالب" : "تم الرفض وإشعار الطالب");
+      }
       qc.invalidateQueries();
     } catch (e) { toast.error((e as Error).message); }
     setBusy("");

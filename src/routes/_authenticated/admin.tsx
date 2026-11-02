@@ -10,6 +10,7 @@ export const Route = createFileRoute("/_authenticated/admin")({
 
 const nav = [
   { to: "/admin", label: "الرئيسية والمدفوعات", exact: true, permission: "payments" },
+  { to: "/admin/plans", label: "الباقات", permission: "payments" },
   { to: "/admin/students", label: "الطلاب", permission: "students" },
   { to: "/admin/content", label: "الأقسام والمحتوى", permission: "content" },
   { to: "/admin/messages", label: "الإعلانات والإشعارات", permission: "communications" },

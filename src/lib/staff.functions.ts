@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { scheduleChangeInput } from "@/lib/schedule-change-input";
 import { buildChangeAlert, changeDedupeKey, weekdayOf } from "@/lib/schedule-changes";
+import { withSchemaExtensions, type SubscriptionPlan } from "@/integrations/supabase/schema-extensions";
 
 type Ctx = {
   supabase: {
@@ -35,20 +36,37 @@ async function notifyUser(
   title: string,
   body: string,
   actor: string,
+  dedupeKey?: string,
 ) {
   const { deliverTelegram, escapeHtml } = await import("@/lib/telegram.server");
   const { deliverPush } = await import("@/lib/push.server");
-  const { data: n } = await admin
+  const db = withSchemaExtensions(admin);
+  const { data: n, error } = await db
     .from("notifications")
-    .insert({ user_id: userId, title, body, created_by: actor })
+    .insert({
+      user_id: userId,
+      title,
+      body,
+      created_by: actor,
+      ...(dedupeKey ? { dedupe_key: dedupeKey } : {}),
+    })
     .select("id")
     .single();
-  if (n?.id) await deliverPush(admin, [userId], { title, body }).catch((e) => console.error(e));
+  if (error?.code === "23505" && dedupeKey) return;
+  if (error || !n) {
+    console.error("Could not save student notification", {
+      code: error?.code,
+      message: error?.message,
+      dedupeKey,
+    });
+    throw new Error("تعذّر حفظ الإشعار؛ أعد المحاولة من لوحة الإدارة");
+  }
+  await deliverPush(admin, [userId], { title, body }).catch((e) => console.error(e));
   await deliverTelegram(
     admin,
     [userId],
     `<b>${escapeHtml(title)}</b>\n${escapeHtml(body)}`,
-    n?.id ?? null,
+    n.id,
     null,
   ).catch((e) => console.error(e));
 }
@@ -84,6 +102,165 @@ async function eligibleTargetUsers(
     )
     .map((p) => p.id);
 }
+
+export const getSubscriptionDashboard = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const db = withSchemaExtensions(context.supabase);
+    const [plans, requests, periods] = await Promise.all([
+      db.from("subscription_plans").select("*").eq("is_active", true).order("sort_order").order("created_at"),
+      db
+        .from("payment_requests")
+        .select("id, plan_id, plan_name_snapshot, plan_duration_days_snapshot, amount, method, reference, status, review_note, created_at")
+        .eq("user_id", context.userId)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      db
+        .from("subscription_periods")
+        .select("*")
+        .eq("user_id", context.userId)
+        .order("created_at", { ascending: false })
+        .limit(50),
+    ]);
+    if (plans.error || requests.error || periods.error) {
+      console.error("Could not load subscription dashboard", {
+        plans: plans.error?.message,
+        requests: requests.error?.message,
+        periods: periods.error?.message,
+      });
+      throw new Error("تعذّر تحميل الباقات وسجل الاشتراكات");
+    }
+    return {
+      plans: plans.data ?? [],
+      requests: requests.data ?? [],
+      periods: periods.data ?? [],
+    };
+  });
+
+export const getAdminSubscriptionPlans = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const admin = await assertStaff(context as Ctx, false, "payments");
+    const db = withSchemaExtensions(admin);
+    const { data, error } = await db
+      .from("subscription_plans")
+      .select("*")
+      .order("sort_order")
+      .order("created_at");
+    if (error) throw new Error("تعذّر تحميل الباقات");
+    return data ?? [];
+  });
+
+export const saveSubscriptionPlan = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        id: z.string().uuid().optional(),
+        name: z.string().trim().min(2).max(100),
+        description: z.string().max(2000).default(""),
+        price: z.number().finite().min(0).max(100_000_000),
+        durationDays: z.number().int().min(1).max(3650),
+        features: z.array(z.string().trim().min(1).max(200)).max(30),
+        isActive: z.boolean(),
+        sortOrder: z.number().int().min(-10_000).max(10_000),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const admin = await assertStaff(context as Ctx, false, "payments");
+    const db = withSchemaExtensions(admin);
+    const values: Pick<
+      SubscriptionPlan,
+      "name" | "description" | "price" | "duration_days" | "features" | "is_active" | "sort_order"
+    > = {
+      name: data.name,
+      description: data.description,
+      price: data.price,
+      duration_days: data.durationDays,
+      features: data.features,
+      is_active: data.isActive,
+      sort_order: data.sortOrder,
+    };
+    const result = data.id
+      ? await db.from("subscription_plans").update(values).eq("id", data.id).select("*").single()
+      : await db.from("subscription_plans").insert(values).select("*").single();
+    if (result.error || !result.data) throw new Error("تعذّر حفظ الباقة");
+    return result.data;
+  });
+
+export const removeSubscriptionPlan = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const admin = await assertStaff(context as Ctx, false, "payments");
+    const db = withSchemaExtensions(admin);
+    const [requests, subscriptions, periods] = await Promise.all([
+      db.from("payment_requests").select("id", { count: "exact", head: true }).eq("plan_id", data.id),
+      db.from("subscriptions").select("id", { count: "exact", head: true }).eq("plan_id", data.id),
+      db.from("subscription_periods").select("id", { count: "exact", head: true }).eq("plan_id", data.id),
+    ]);
+    if (requests.error || subscriptions.error || periods.error) {
+      throw new Error("تعذّر التحقق من ارتباط الباقة بسجلات الاشتراك");
+    }
+    const isReferenced = (requests.count ?? 0) + (subscriptions.count ?? 0) + (periods.count ?? 0) > 0;
+    const result = isReferenced
+      ? await db.from("subscription_plans").update({ is_active: false }).eq("id", data.id)
+      : await db.from("subscription_plans").delete().eq("id", data.id);
+    if (result.error) throw new Error("تعذّر حذف الباقة أو أرشفتها");
+    return { archived: isReferenced };
+  });
+
+export const submitPlanPayment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        planId: z.string().uuid(),
+        method: z.string().trim().min(1).max(100),
+        reference: z.string().trim().min(3).max(200),
+        receiptPath: z.string().min(1).max(300),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    if (
+      !data.receiptPath.startsWith(`${context.userId}/`) ||
+      data.receiptPath.split("/").length !== 2 ||
+      !/^[0-9a-f-]{36}\.(?:jpg|png|webp)$/i.test(data.receiptPath.split("/")[1] ?? "")
+    ) {
+      throw new Error("مسار الإيصال غير صالح");
+    }
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const db = withSchemaExtensions(supabaseAdmin);
+    const { error: receiptError } = await supabaseAdmin.storage
+      .from("receipts")
+      .download(data.receiptPath);
+    if (receiptError) throw new Error("تعذّر التحقق من صورة الإيصال المرفوعة");
+
+    const { data: requestId, error } = await db.rpc("create_plan_payment_request", {
+      _user_id: context.userId,
+      _plan_id: data.planId,
+      _method: data.method,
+      _reference: data.reference,
+      _receipt_path: data.receiptPath,
+    });
+    if (error || !requestId) {
+      console.error("Subscription payment request failed", {
+        code: error?.code,
+        message: error?.message,
+        userId: context.userId,
+      });
+      throw new Error(
+        error?.message.includes("already pending")
+          ? "لديك طلب دفع قيد المراجعة بالفعل"
+          : error?.message.includes("already active")
+            ? "اشتراكك فعّال بالفعل"
+            : "تعذّر إرسال طلب الاشتراك؛ راجع بيانات الدفع وحاول مجددًا",
+      );
+    }
+    return { id: requestId };
+  });
 
 export const notifyNewAcademicContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -264,91 +441,148 @@ export const reviewPayment = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const admin = await assertStaff(context as Ctx, false, "payments");
-    const { data: pr } = await admin
-      .from("payment_requests")
-      .select("*")
-      .eq("id", data.id)
-      .maybeSingle();
-    if (!pr) throw new Error("الطلب غير موجود");
-    if (pr.status !== "pending") throw new Error("تمت مراجعة هذا الطلب مسبقًا");
-    if (data.approve && pr.receipt_path) {
-      const { error } = await admin.storage.from("receipts").remove([pr.receipt_path]);
-      if (error) throw new Error("تعذّر حذف صورة التحويل؛ لم يتم تفعيل الاشتراك");
+    const db = withSchemaExtensions(admin);
+    const { data: result, error } = await db.rpc("review_subscription_payment", {
+      _payment_request_id: data.id,
+      _approve: data.approve,
+      _reviewed_by: context.userId,
+      _note: data.note ?? null,
+    });
+    if (error || !result) {
+      console.error("Subscription payment review failed", {
+        code: error?.code,
+        message: error?.message,
+        requestId: data.id,
+      });
+      throw new Error("تعذّرت مراجعة الطلب؛ لم يتم تغيير حالة الاشتراك");
     }
-    const now = new Date();
-    const { error: reviewError } = await admin
-      .from("payment_requests")
-      .update({
-        status: data.approve ? "approved" : "rejected",
-        receipt_path: data.approve ? null : pr.receipt_path,
-        reviewed_by: context.userId,
-        reviewed_at: now.toISOString(),
-        review_note: data.note ?? null,
+
+    const reviewed = z
+      .object({
+        user_id: z.string().uuid(),
+        plan_name: z.string(),
+        end_at: z.string().nullable(),
+        receipt_path: z.string().nullable(),
+        approved: z.boolean(),
       })
-      .eq("id", data.id);
-    if (reviewError) throw new Error("تعذّر حفظ نتيجة مراجعة الدفع");
+      .safeParse(result);
+    if (!reviewed.success) {
+      console.error("Subscription review returned an invalid result", { requestId: data.id });
+      throw new Error("تم تحديث الطلب لكن تعذّر قراءة نتيجة المراجعة");
+    }
+
+    if (data.approve && reviewed.data.receipt_path) {
+      const { error: removeError } = await admin.storage
+        .from("receipts")
+        .remove([reviewed.data.receipt_path]);
+      if (removeError) {
+        console.error("Approved payment receipt cleanup failed", {
+          code: removeError.name,
+          requestId: data.id,
+        });
+      } else {
+        const { error: clearError } = await admin
+          .from("payment_requests")
+          .update({ receipt_path: null })
+          .eq("id", data.id);
+        if (clearError) {
+          console.error("Approved payment receipt reference cleanup failed", {
+            code: clearError.code,
+            requestId: data.id,
+          });
+        }
+      }
+    }
 
     if (data.approve) {
-      const { data: cur } = await admin
-        .from("subscriptions")
-        .select("status, end_at")
-        .eq("user_id", pr.user_id)
-        .single();
-      const base =
-        cur?.status === "active" && cur.end_at && new Date(cur.end_at) > now
-          ? new Date(cur.end_at)
-          : now;
-      const end = new Date(base.getTime() + 365 * 86_400_000);
-      await admin
-        .from("subscriptions")
-        .update({
-          status: "active",
-          start_at: now.toISOString(),
-          end_at: end.toISOString(),
-          amount: pr.amount,
-          payment_method: pr.method,
-          payment_reference: pr.reference,
-          activated_by: context.userId,
-          activated_at: now.toISOString(),
-        })
-        .eq("user_id", pr.user_id);
-      await admin
-        .from("subscription_events")
-        .update({ actor_id: context.userId })
-        .eq("user_id", pr.user_id)
-        .is("actor_id", null);
-      await notifyUser(
-        admin,
-        pr.user_id,
-        "تم تفعيل اشتراكك",
-        `اشتراكك مفعّل حتى ${end.toLocaleDateString("ar-EG")}.`,
-        context.userId,
-      );
+      const end = reviewed.data.end_at
+        ? new Date(reviewed.data.end_at).toLocaleDateString("ar-EG")
+        : "—";
+      try {
+        await notifyUser(
+          admin,
+          reviewed.data.user_id,
+          "تم تفعيل اشتراكك بنجاح 🎉",
+          `تمت الموافقة على اشتراكك في باقة ${reviewed.data.plan_name}. اشتراكك نشط حتى ${end}. نتمنى لك تجربة دراسية موفقة.`,
+          context.userId,
+          `subscription-activation:${reviewed.data.user_id}:${reviewed.data.end_at ? new Date(reviewed.data.end_at).toISOString() : "null"}`,
+        );
+      } catch (notificationError) {
+        console.error("Subscription activated but notification creation failed", {
+          requestId: data.id,
+          userId: reviewed.data.user_id,
+          notificationError,
+        });
+        return { ok: true, notificationError: true };
+      }
     } else {
-      await admin
-        .from("subscriptions")
-        .update({ status: "rejected" })
-        .eq("user_id", pr.user_id)
-        .eq("status", "pending");
-      await admin
-        .from("subscription_events")
-        .update({ actor_id: context.userId, note: data.note ?? null })
-        .eq("user_id", pr.user_id)
-        .is("actor_id", null);
-      await notifyUser(
-        admin,
-        pr.user_id,
-        "تم رفض طلب الدفع",
-        data.note || "راجع بيانات الدفع وأعد الإرسال أو تواصل مع الدعم.",
-        context.userId,
-      );
+      try {
+        await notifyUser(
+          admin,
+          reviewed.data.user_id,
+          "تم رفض طلب الدفع",
+          data.note || "راجع بيانات الدفع وأعد الإرسال أو تواصل مع الدعم.",
+          context.userId,
+          `subscription-rejection:${data.id}`,
+        );
+      } catch (notificationError) {
+        console.error("Payment request rejected but notification creation failed", {
+          requestId: data.id,
+          userId: reviewed.data.user_id,
+          notificationError,
+        });
+        return { ok: true, notificationError: true };
+      }
     }
+    return { ok: true };
+  });
+
+export const retrySubscriptionNotification = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ userId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const admin = await assertStaff(context as Ctx, false, "payments");
+    const { data: subscription, error: subscriptionError } = await admin
+      .from("subscriptions")
+      .select("status, end_at, plan_id")
+      .eq("user_id", data.userId)
+      .maybeSingle();
+    if (subscriptionError || subscription?.status !== "active" ||
+      (subscription.end_at && new Date(subscription.end_at) <= new Date())) {
+      throw new Error("لا يوجد اشتراك نشط لإعادة إشعاره");
+    }
+
+    let planName = "اشتراكك";
+    if (subscription.plan_id) {
+      const db = withSchemaExtensions(admin);
+      const { data: plan, error } = await db
+        .from("subscription_plans")
+        .select("name")
+        .eq("id", subscription.plan_id)
+        .maybeSingle();
+      if (error) throw new Error("تعذّر تحميل اسم الباقة");
+      planName = plan?.name ?? planName;
+    }
+
+    const end = subscription.end_at
+      ? new Date(subscription.end_at).toLocaleDateString("ar-EG")
+      : "—";
+    await notifyUser(
+      admin,
+      data.userId,
+      "تم تفعيل اشتراكك بنجاح 🎉",
+      `تمت الموافقة على اشتراكك في باقة ${planName}. اشتراكك نشط حتى ${end}. نتمنى لك تجربة دراسية موفقة.`,
+      context.userId,
+      `subscription-activation:${data.userId}:${subscription.end_at ? new Date(subscription.end_at).toISOString() : "null"}`,
+    );
     return { ok: true };
   });
 
 export const reviewStudentRegistration = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ userId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z.object({ userId: z.string().uuid(), retryNotification: z.boolean().default(false) }).parse(d),
+  )
   .handler(async ({ data, context }) => {
     const admin = await assertStaff(context as Ctx, false, "students");
     const { data: profile, error: profileError } = await admin
@@ -357,27 +591,54 @@ export const reviewStudentRegistration = createServerFn({ method: "POST" })
       .eq("id", data.userId)
       .maybeSingle();
     if (profileError || !profile) throw new Error("تعذّر تحميل بيانات الحساب");
+    if (profile.registration_status === "active" && data.retryNotification) {
+      try {
+        await notifyUser(
+          admin,
+          data.userId,
+          "تم تفعيل حسابك بنجاح 🎉",
+          "أهلًا بك في Smart Study! تمت الموافقة على حسابك وأصبح بإمكانك الآن الدخول إلى المنصة. يمكنك استكمال خطوات الاشتراك واختيار الباقة المناسبة لك.",
+          context.userId,
+          `account-activation:${data.userId}`,
+        );
+      } catch (notificationError) {
+        console.error("Account activated but notification creation failed", {
+          userId: data.userId,
+          notificationError,
+        });
+        throw notificationError;
+      }
+      return { ok: true, retried: true };
+    }
     if (profile.registration_status !== "pending") throw new Error("تمت مراجعة هذا الحساب مسبقًا");
     if (!profile.id_card_path) throw new Error("لا توجد صورة كارنيه لمراجعتها");
+
+    const { data: activated, error: updateError } = await admin
+      .from("profiles")
+      .update({ registration_status: "active", id_card_path: null })
+      .eq("id", data.userId)
+      .eq("registration_status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (updateError || !activated) throw new Error("تعذّر تفعيل الحساب؛ لم يتم تغيير حالته");
 
     const { error: deleteError } = await admin.storage
       .from("student-ids")
       .remove([profile.id_card_path]);
-    if (deleteError) throw new Error("تعذّر حذف صورة الكارنيه؛ لم يتم تفعيل الحساب");
-
-    const { error: updateError } = await admin
-      .from("profiles")
-      .update({ registration_status: "active", id_card_path: null })
-      .eq("id", data.userId)
-      .eq("registration_status", "pending");
-    if (updateError) throw new Error("حُذفت الصورة لكن تعذّر تفعيل الحساب؛ راجع الحالة في قائمة الطلاب");
+    if (deleteError) {
+      console.error("Activated student's ID card cleanup failed", {
+        code: deleteError.name,
+        userId: data.userId,
+      });
+    }
 
     await notifyUser(
       admin,
       data.userId,
-      "تم تفعيل حسابك 🎉",
-      "تقدر الآن تبدأ اشتراكك السنوي. افتح صفحة حسابي، اختر طريقة الدفع، وأرسل إيصال العملية للمراجعة.",
+      "تم تفعيل حسابك بنجاح 🎉",
+      "أهلًا بك في Smart Study! تمت الموافقة على حسابك وأصبح بإمكانك الآن الدخول إلى المنصة. يمكنك استكمال خطوات الاشتراك واختيار الباقة المناسبة لك.",
       context.userId,
+      `account-activation:${data.userId}`,
     );
     return { ok: true };
   });
@@ -396,6 +657,18 @@ export const setSubscriptionStatus = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const admin = await assertStaff(context as Ctx, false, "payments");
+    const db = withSchemaExtensions(admin);
+    const { data: currentSubscription, error: currentSubscriptionError } = await db
+      .from("subscriptions")
+      .select("plan_id, amount")
+      .eq("user_id", data.userId)
+      .maybeSingle();
+    if (currentSubscriptionError) throw new Error("تعذّر تحميل الاشتراك الحالي");
+    const now = new Date();
+    const requestedEndAt = data.endAt ? new Date(data.endAt) : new Date(now.getTime() + 365 * 86_400_000);
+    if (data.status === "active" && (!Number.isFinite(requestedEndAt.getTime()) || requestedEndAt <= now)) {
+      throw new Error("تاريخ انتهاء الاشتراك يجب أن يكون في المستقبل");
+    }
     if (data.status === "active") {
       const { data: requests, error: requestsError } = await admin
         .from("payment_requests")
@@ -421,26 +694,69 @@ export const setSubscriptionStatus = createServerFn({ method: "POST" })
       end_at?: string;
       activated_by?: string;
       activated_at?: string;
-    } = { user_id: data.userId, status: data.status };
+      plan_id: string | null;
+    } = { user_id: data.userId, status: data.status, plan_id: currentSubscription?.plan_id ?? null };
     if (data.status === "active") {
-      const now = new Date();
-      const endAt = data.endAt ? new Date(data.endAt) : new Date(now.getTime() + 365 * 86_400_000);
-      if (!Number.isFinite(endAt.getTime()) || endAt <= now)
-        throw new Error("تاريخ انتهاء الاشتراك يجب أن يكون في المستقبل");
       patch.start_at = now.toISOString();
-      patch.end_at = endAt.toISOString();
+      patch.end_at = requestedEndAt.toISOString();
       patch.activated_by = context.userId;
       patch.activated_at = now.toISOString();
     }
-    const { error } = await admin
+    const { error } = await db
       .from("subscriptions")
       .upsert(patch, { onConflict: "user_id" });
     if (error) throw new Error("تعذّر تحديث الاشتراك");
-    await admin
+    const { error: eventError } = await admin
       .from("subscription_events")
       .update({ actor_id: context.userId, note: data.note ?? null })
       .eq("user_id", data.userId)
       .is("actor_id", null);
+    if (eventError) throw new Error("تم تحديث الاشتراك لكن تعذّر حفظ سجل المراجعة");
+    if (data.status === "active" && patch.start_at && patch.end_at) {
+      let planName = "اشتراك يدوي";
+      if (patch.plan_id) {
+        const { data: plan, error: planError } = await db
+          .from("subscription_plans")
+          .select("name")
+          .eq("id", patch.plan_id)
+          .maybeSingle();
+        if (planError) throw new Error("تم تفعيل الاشتراك لكن تعذّر تحميل اسم الباقة");
+        planName = plan?.name ?? planName;
+      }
+      const durationDays = Math.max(
+        1,
+        Math.ceil((new Date(patch.end_at).getTime() - new Date(patch.start_at).getTime()) / 86_400_000),
+      );
+      const { error: periodError } = await db.from("subscription_periods").insert({
+        user_id: data.userId,
+        plan_id: patch.plan_id,
+        payment_request_id: null,
+        plan_name: planName,
+        duration_days: durationDays,
+        amount: currentSubscription?.amount ?? 0,
+        status: "active",
+        start_at: patch.start_at,
+        end_at: patch.end_at,
+      });
+      if (periodError) throw new Error("تم تفعيل الاشتراك لكن تعذّر تسجيله في السجل التاريخي");
+      try {
+        const end = new Date(patch.end_at).toLocaleDateString("ar-EG");
+        await notifyUser(
+          admin,
+          data.userId,
+          "تم تفعيل اشتراكك بنجاح 🎉",
+          `تمت الموافقة على اشتراكك في باقة ${planName}. اشتراكك نشط حتى ${end}. نتمنى لك تجربة دراسية موفقة.`,
+          context.userId,
+          `subscription-activation:${data.userId}:${patch.end_at}`,
+        );
+      } catch (notificationError) {
+        console.error("Subscription activated but notification creation failed", {
+          userId: data.userId,
+          notificationError,
+        });
+        return { ok: true, notificationError: true };
+      }
+    }
     return { ok: true };
   });
 
@@ -591,4 +907,3 @@ export const announceAndNotify = createServerFn({ method: "POST" })
     const telegram = await deliverTelegram(admin, ids, `<b>📢 ${escapeHtml(data.title)}</b>\n${escapeHtml(data.body.slice(0, 900))}`, n.id);
     return { ...telegram, pushSent: push.sent, pushFailed: push.failed, pushConfigured: push.configured };
   });
-

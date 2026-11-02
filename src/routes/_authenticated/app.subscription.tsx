@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useState, type FormEvent } from "react";
-import { Building2, GraduationCap, Hash, Loader2, Phone, UserRound } from "lucide-react";
+import { Building2, GraduationCap, Hash, Loader2, Phone, Sparkles, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,7 @@ import { statusLabel, useMe } from "@/hooks/use-me";
 import { useSettings } from "@/hooks/use-settings";
 import { Card, ErrorBox, fmtDate, Loading, PageTitle } from "@/components/app-ui";
 import { useText } from "@/hooks/use-preferences";
+import { getSubscriptionDashboard, submitPlanPayment } from "@/lib/staff.functions";
 
 export const Route = createFileRoute("/_authenticated/app/subscription")({
   head: () => ({
@@ -33,9 +35,12 @@ function Subscription() {
   const t = useText();
   const settings = useSettings();
   const qc = useQueryClient();
-  const requests = useQuery({
-    queryKey: ["my-payments"],
-    queryFn: async () => (await supabase.from("payment_requests").select("*").order("created_at", { ascending: false }).limit(10)).data ?? [],
+  const loadDashboard = useServerFn(getSubscriptionDashboard);
+  const submitRequest = useServerFn(submitPlanPayment);
+  const dashboard = useQuery({
+    queryKey: ["subscription-dashboard", me.data?.id],
+    enabled: !!me.data?.id,
+    queryFn: () => loadDashboard(),
   });
   const department = useQuery({
     queryKey: ["my-department", me.data?.profile?.department_id],
@@ -50,22 +55,27 @@ function Subscription() {
   });
   const [method, setMethod] = useState("");
   const [reference, setReference] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
-  if (me.isLoading || settings.isLoading) return <Loading />;
-  if (!me.data || !settings.data) return <ErrorBox />;
+  if (me.isLoading || settings.isLoading || dashboard.isLoading) return <Loading />;
+  if (!me.data || !settings.data || dashboard.isError) return <ErrorBox />;
   const s = settings.data;
   const userId = me.data.id;
   const st = statusLabel[me.data.status];
   const isActive = me.data.status === "active";
-  const hasPending = (requests.data ?? []).some((r) => r.status === "pending");
+  const requests = dashboard.data?.requests ?? [];
+  const plans = dashboard.data?.plans ?? [];
+  const periods = dashboard.data?.periods ?? [];
+  const hasPending = requests.some((r) => r.status === "pending");
   const canSubmit = !isActive && !hasPending && me.data.status !== "suspended";
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setErr("");
+    if (!selectedPlan) return setErr(t("اختر الباقة أولًا.", "Choose a plan first."));
     if (!method) return setErr(t("اختر طريقة الدفع.", "Choose a payment method."));
     if (reference.trim().length < 3) return setErr(t("اكتب رقم العملية أو الرقم المحوَّل منه.", "Enter the transaction or sender reference."));
     if (!file) return setErr(t("ارفع صورة التحويل أو الإيصال.", "Upload a photo of the transfer receipt."));
@@ -75,16 +85,24 @@ function Subscription() {
     setBusy(true);
     const extension = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
     const receipt_path = `${userId}/${crypto.randomUUID()}.${extension}`;
-    const up = await supabase.storage.from("receipts").upload(receipt_path, file, { contentType: file.type, upsert: false });
-    if (up.error) { setBusy(false); return setErr(t("تعذّر رفع الإيصال، حاول مرة أخرى.", "Could not upload the receipt. Try again.")); }
-    const { error } = await supabase.from("payment_requests").insert({ user_id: userId, amount: s.subscription_price, method, reference: reference.trim(), receipt_path });
-    setBusy(false);
-    if (error) {
-      await supabase.storage.from("receipts").remove([receipt_path]);
-      return setErr(t("تعذّر إرسال الطلب، حاول مرة أخرى.", "Could not submit your request. Try again."));
+    try {
+      const upload = await supabase.storage.from("receipts").upload(receipt_path, file, { contentType: file.type, upsert: false });
+      if (upload.error) throw new Error(t("تعذّر رفع الإيصال، حاول مرة أخرى.", "Could not upload the receipt. Try again."));
+      await submitRequest({ data: {
+        planId: selectedPlan,
+        method,
+        reference: reference.trim(),
+        receiptPath: receipt_path,
+      } });
+    } catch (error) {
+      console.error("Could not submit subscription request", error);
+      setErr(error instanceof Error ? error.message : t("تعذّر إرسال الطلب، حاول مرة أخرى.", "Could not submit your request. Try again."));
+      setBusy(false);
+      return;
     }
+    setBusy(false);
     toast.success(t("تم إرسال طلبك للمراجعة", "Your request was submitted for review"));
-    setReference(""); setFile(null);
+    setReference(""); setFile(null); setSelectedPlan("");
     qc.invalidateQueries();
   }
 
@@ -131,11 +149,68 @@ function Subscription() {
           {me.data.status === "suspended" && <p className="mt-3 text-sm text-destructive">{t("اشتراكك موقوف. تواصل مع الإدارة.", "Your subscription is suspended. Contact the administration.")}</p>}
         </Card>
         <Card>
-          <p className="text-sm text-muted-foreground">{t("سعر الاشتراك السنوي", "Annual subscription")}</p>
-          <p className="mt-1 text-3xl font-extrabold text-navy">{s.subscription_price} <span className="text-base font-semibold">{s.currency}</span></p>
-          <p className="mt-1 text-sm text-muted-foreground">{t("مدة الاشتراك: سنة واحدة", "Subscription period: one year")}</p>
+          <p className="text-sm text-muted-foreground">{t("خطتك الحالية", "Your current plan")}</p>
+          <p className="mt-1 text-xl font-extrabold text-navy">
+            {me.data.sub?.plan_id
+              ? plans.find((plan) => plan.id === me.data?.sub?.plan_id)?.name ?? t("اشتراك نشط", "Active subscription")
+              : t("لا توجد باقة نشطة", "No active plan")}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {me.data.sub?.start_at
+              ? `${t("تاريخ البداية:", "Started:")} ${fmtDate(me.data.sub.start_at)}`
+              : t("اختر إحدى الباقات المتاحة للاشتراك.", "Choose one of the available plans.")}
+          </p>
         </Card>
       </div>
+
+      {me.data.profile?.registration_status !== "active" && !me.data.isStaff ? (
+        <p className="mt-4 rounded-xl bg-warning-soft px-4 py-3 text-sm text-warning">
+          {t("حسابك بانتظار موافقة الإدارة قبل تقديم طلب الاشتراك.", "Your account must be approved before submitting a subscription request.")}
+        </p>
+      ) : (
+        <section className="mt-6">
+          <h2 className="mb-3 text-lg font-bold">{t("الباقات المتاحة", "Available plans")}</h2>
+          {plans.length === 0 ? (
+            <Card className="text-sm text-muted-foreground">
+              {t("لا توجد باقات نشطة حاليًا. تواصل مع الإدارة.", "There are no active plans right now. Contact the administration.")}
+            </Card>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {plans.map((plan) => (
+                <Card key={plan.id} className={selectedPlan === plan.id ? "border-primary ring-1 ring-primary" : ""}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-bold">{plan.name}</h3>
+                      {plan.description && <p className="mt-1 text-sm text-muted-foreground">{plan.description}</p>}
+                    </div>
+                    <Sparkles className="size-5 shrink-0 text-primary" />
+                  </div>
+                  <p className="mt-4 text-2xl font-extrabold text-navy">
+                    {plan.price} <span className="text-sm font-semibold">{s.currency}</span>
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">{plan.duration_days} {t("يومًا", "days")}</p>
+                  {plan.features.length > 0 && (
+                    <ul className="mt-4 list-inside list-disc space-y-1 text-sm">
+                      {plan.features.map((feature, index) => <li key={`${plan.id}-${index}`}>{feature}</li>)}
+                    </ul>
+                  )}
+                  {!isActive && (
+                    <Button
+                      type="button"
+                      className="mt-4 w-full"
+                      variant={selectedPlan === plan.id ? "default" : "outline"}
+                      onClick={() => setSelectedPlan(plan.id)}
+                      disabled={hasPending || me.data.status === "suspended"}
+                    >
+                      {selectedPlan === plan.id ? t("تم اختيار الباقة", "Plan selected") : t("اختيار هذه الباقة", "Choose this plan")}
+                    </Button>
+                  )}
+                </Card>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {isActive ? (
         <p className="mt-4 rounded-xl bg-success-soft px-4 py-3 text-sm text-success">
@@ -155,7 +230,12 @@ function Subscription() {
 
       {!isActive && canSubmit ? (
         <Card className="mt-4">
-          <h2 className="font-bold">{t("إرسال بيانات الدفع", "Submit payment details")}</h2>
+          <h2 className="font-bold">{t("إرسال طلب الاشتراك", "Submit subscription request")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {selectedPlan
+              ? `${t("الباقة المختارة:", "Selected plan:")} ${plans.find((plan) => plan.id === selectedPlan)?.name ?? ""}`
+              : t("اختر باقة قبل إرسال بيانات الدفع.", "Choose a plan before submitting payment details.")}
+          </p>
           <form onSubmit={submit} className="mt-4 grid gap-4 sm:grid-cols-2" noValidate>
             <div className="space-y-2">
               <Label htmlFor="method">{t("طريقة الدفع", "Payment method")}</Label>
@@ -173,22 +253,35 @@ function Subscription() {
               <Input id="receipt" type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
             </div>
             {err && <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive sm:col-span-2">{err}</p>}
-            <Button type="submit" disabled={busy} className="sm:col-span-2">{busy && <Loader2 className="size-4 animate-spin" />} {t("إرسال للمراجعة", "Submit for review")}</Button>
+            <Button type="submit" disabled={busy || !selectedPlan} className="sm:col-span-2">{busy && <Loader2 className="size-4 animate-spin" />} {t("إرسال للمراجعة", "Submit for review")}</Button>
           </form>
         </Card>
       ) : !isActive && hasPending && (
         <p className="mt-4 rounded-xl bg-warning-soft px-4 py-3 text-sm text-warning">{t("لديك طلب قيد المراجعة. سيصلك إشعار عند البت فيه.", "You have a request under review. You will be notified when it is processed.")}</p>
       )}
 
-      {!isActive && (requests.data ?? []).length > 0 && (
+      {requests.length > 0 && (
         <Card className="mt-4">
           <h2 className="font-bold">{t("طلباتك السابقة", "Previous requests")}</h2>
           <ul className="mt-3 divide-y text-sm">
-            {requests.data!.map((r) => (
+            {requests.map((r) => (
               <li key={r.id} className="flex flex-wrap justify-between gap-2 py-3">
-                <span>{r.method} · {r.amount} · <span dir="auto">{r.reference}</span></span>
+                <span>{r.plan_name_snapshot ?? t("الباقة السابقة", "Previous plan")} · {r.method} · {r.amount} · <span dir="auto">{r.reference}</span></span>
                 <span className="text-muted-foreground">{t(prLabel[r.status], r.status === "pending" ? "Under review" : r.status === "approved" ? "Approved" : "Rejected")} · {fmtDate(r.created_at)}</span>
                 {r.review_note && <span className="w-full text-xs text-muted-foreground">{t("ملاحظة الإدارة:", "Administration note:")} {r.review_note}</span>}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {periods.length > 0 && (
+        <Card className="mt-4">
+          <h2 className="font-bold">{t("سجل اشتراكاتك", "Subscription history")}</h2>
+          <ul className="mt-3 divide-y text-sm">
+            {periods.map((period) => (
+              <li key={period.id} className="flex flex-wrap justify-between gap-2 py-3">
+                <span>{period.plan_name} · {period.amount} {s.currency}</span>
+                <span className="text-muted-foreground">{fmtDate(period.start_at)} — {fmtDate(period.end_at)}</span>
               </li>
             ))}
           </ul>

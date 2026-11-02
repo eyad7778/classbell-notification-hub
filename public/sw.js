@@ -1,3 +1,62 @@
+const STATIC_CACHE = "smart-study-static-v1";
+const STATIC_ASSETS = [
+  "/manifest.webmanifest",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/favicon.ico",
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(STATIC_CACHE)
+      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    Promise.all([
+      caches.keys().then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith("smart-study-") && key !== STATIC_CACHE)
+            .map((key) => caches.delete(key)),
+        ),
+      ),
+      self.registration.getNotifications().then((notifications) => {
+        notifications.forEach((notification) => notification.close());
+      }),
+    ]).then(() => self.clients.claim()),
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET" || request.mode === "navigate") return;
+
+  const url = new URL(request.url);
+  if (
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith("/api/") ||
+    !/\.(?:css|ico|js|png|svg|webp|woff2)$/.test(url.pathname)
+  ) {
+    return;
+  }
+
+  event.respondWith(
+    caches.open(STATIC_CACHE).then(async (cache) => {
+      const cached = await cache.match(request);
+      if (cached) return cached;
+
+      const response = await fetch(request);
+      if (response.ok) await cache.put(request, response.clone());
+      return response;
+    }),
+  );
+});
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -7,10 +66,10 @@ self.addEventListener("push", (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(data.title || "Smart Student", {
+    self.registration.showNotification(data.title || "Smart Study", {
       body: data.body || "لديك إشعار جديد",
-      icon: "/brand-mark.svg",
-      badge: "/brand-mark.svg",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
       tag: data.tag || undefined,
       data: { url: data.url || "/app/notifications" },
       dir: "auto",

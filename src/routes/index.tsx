@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Bell, BookOpen, CalendarClock, CreditCard, Megaphone, Send, ShieldCheck, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PublicLayout } from "@/components/site-shell";
+import { PwaInstall } from "@/components/pwa-install";
 import { useSettings } from "@/hooks/use-settings";
 import { usePreferences } from "@/hooks/use-preferences";
 import { useSession } from "@/hooks/use-session";
@@ -41,7 +42,7 @@ const features = [
 const steps = [
   { icon: UserPlus, title: ["أنشئ حسابك", "Create your account"], text: ["بالاسم ورقم الهاتف وكلمة مرور.", "Sign up with your name, phone number, and password."] },
   { icon: CreditCard, title: ["فعّل اشتراكك", "Activate your subscription"], text: ["ادفع بإحدى الطرق المتاحة وأرسل بيانات العملية للمراجعة.", "Pay using an available method and send the details for review."] },
-  { icon: Send, title: ["اربط Telegram", "Connect Telegram"], text: ["بضغطة واحدة لتصلك الإشعارات مباشرة.", "Link your account to receive Telegram notifications."] },
+  { icon: Send, title: ["إشعارات Telegram اختياريًا", "Optional Telegram notifications"], text: ["اربط Telegram في أي وقت، أو استخدم إشعارات التطبيق دون ربطه.", "Link Telegram at any time, or use app notifications without linking it."] },
   { icon: ShieldCheck, title: ["ابدأ الاستخدام", "Start studying"], text: ["وصول كامل للمحتوى طوال مدة الاشتراك.", "Access your study content while your subscription is active."] },
 ];
 
@@ -75,6 +76,7 @@ function Index() {
                 </>
               )}
             </div>
+            <PwaInstall />
           </div>
           <img src={hero} fetchPriority="high" decoding="async" alt={english ? "Smart Student app on a phone" : "واجهة تطبيق Smart Student على الهاتف"} width={1024} height={896} className="mx-auto w-full max-w-md" />
         </div>
@@ -191,9 +193,11 @@ function Index() {
             ))}
           </ol>
           {s && (
-            <p className="mt-8 rounded-xl bg-primary-soft px-4 py-3 text-sm text-accent-foreground">
-              {english ? "Annual subscription:" : "الاشتراك السنوي:"} <b>{s.subscription_price} {s.currency}</b> {english ? <>for <b>one year</b>.</> : <>لمدة <b>سنة واحدة</b>.</>}
-            </p>
+            <Button asChild className="mt-8">
+              <Link to={session ? "/app/subscription" : "/signup"}>
+                {english ? "Compare the available packages" : "تعرّف على الباقات المتاحة"}
+              </Link>
+            </Button>
           )}
         </div>
       </section>
