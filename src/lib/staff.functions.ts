@@ -17,7 +17,8 @@ type Ctx = {
 };
 
 async function assertStaff(ctx: Ctx, ownerOnly = false, permission?: "students" | "payments" | "content" | "communications") {
-  const { data: isOwner } = await ctx.supabase.rpc("has_role", { _user_id: ctx.userId, _role: "owner" });
+  const { data: ownerRows } = await (ctx.supabase as any).from("user_roles").select("role").eq("user_id", ctx.userId).eq("role", "owner");
+  const isOwner = (ownerRows ?? []).length > 0;
   if (ownerOnly && !isOwner) throw new Error("غير مصرح لك بهذا الإجراء");
   if (!isOwner) {
     if (!permission) throw new Error("غير مصرح لك بهذا الإجراء");
