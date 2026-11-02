@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { scheduleChangeInput } from "@/lib/schedule-change-input";
 import { buildChangeAlert, changeDedupeKey, weekdayOf } from "@/lib/schedule-changes";
+import { alertOwners, studentLabel } from "@/lib/admin-alerts.server";
 import { withSchemaExtensions, type SubscriptionPlan } from "@/integrations/supabase/schema-extensions";
 
 type Ctx = {
@@ -259,6 +260,13 @@ export const submitPlanPayment = createServerFn({ method: "POST" })
             : "تعذّر إرسال طلب الاشتراك؛ راجع بيانات الدفع وحاول مجددًا",
       );
     }
+    const { data: plan } = await db.from("subscription_plans").select("name, price").eq("id", data.planId).maybeSingle();
+    await alertOwners(supabaseAdmin, "💳 طلب اشتراك جديد", [
+      ...(await studentLabel(supabaseAdmin, context.userId)),
+      `الباقة: ${plan?.name ?? "—"}${plan ? ` (${plan.price} ج.م)` : ""}`,
+      `طريقة الدفع: ${data.method}`,
+      `المرجع: ${data.reference}`,
+    ]);
     return { id: requestId };
   });
 
@@ -471,6 +479,13 @@ export const reviewPayment = createServerFn({ method: "POST" })
       throw new Error("تم تحديث الطلب لكن تعذّر قراءة نتيجة المراجعة");
     }
 
+    await alertOwners(admin, data.approve ? "✅ تم تفعيل اشتراك" : "❌ تم رفض طلب اشتراك", [
+      ...(await studentLabel(admin, reviewed.data.user_id)),
+      `الباقة: ${reviewed.data.plan_name}`,
+      data.approve && reviewed.data.end_at ? `ينتهي: ${new Date(reviewed.data.end_at).toLocaleDateString("ar-EG")}` : null,
+      data.note ? `ملاحظة: ${data.note}` : null,
+    ]);
+
     if (data.approve && reviewed.data.receipt_path) {
       const { error: removeError } = await admin.storage
         .from("receipts")
@@ -542,7 +557,7 @@ export const retrySubscriptionNotification = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ userId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const admin = await assertStaff(context as Ctx, false, "payments");
-    const { data: subscription, error: subscriptionError } = await admin
+    const { data: subscription, error: subscriptionError } = await withSchemaExtensions(admin)
       .from("subscriptions")
       .select("status, end_at, plan_id")
       .eq("user_id", data.userId)
@@ -625,6 +640,7 @@ export const reviewStudentRegistration = createServerFn({ method: "POST" })
     const { error: deleteError } = await admin.storage
       .from("student-ids")
       .remove([profile.id_card_path]);
+    await alertOwners(admin, "🎓 تم تفعيل حساب طالب", await studentLabel(admin, data.userId));
     if (deleteError) {
       console.error("Activated student's ID card cleanup failed", {
         code: deleteError.name,
@@ -712,6 +728,12 @@ export const setSubscriptionStatus = createServerFn({ method: "POST" })
       .eq("user_id", data.userId)
       .is("actor_id", null);
     if (eventError) throw new Error("تم تحديث الاشتراك لكن تعذّر حفظ سجل المراجعة");
+    const statusAr = { active: "تفعيل", suspended: "إيقاف", expired: "إنهاء", awaiting_payment: "إرجاع لانتظار الدفع" }[data.status];
+    await alertOwners(admin, `🔄 ${statusAr} اشتراك يدويًا`, [
+      ...(await studentLabel(admin, data.userId)),
+      patch.end_at ? `ينتهي: ${new Date(patch.end_at).toLocaleDateString("ar-EG")}` : null,
+      data.note ? `ملاحظة: ${data.note}` : null,
+    ]);
     if (data.status === "active" && patch.start_at && patch.end_at) {
       let planName = "اشتراك يدوي";
       if (patch.plan_id) {
@@ -906,4 +928,16 @@ export const announceAndNotify = createServerFn({ method: "POST" })
     const { deliverTelegram, escapeHtml } = await import("@/lib/telegram.server");
     const telegram = await deliverTelegram(admin, ids, `<b>📢 ${escapeHtml(data.title)}</b>\n${escapeHtml(data.body.slice(0, 900))}`, n.id);
     return { ...telegram, pushSent: push.sent, pushFailed: push.failed, pushConfigured: push.configured };
+  });
+
+/** Called by the browser right after signup; only alerts about the caller's own fresh account. */
+export const announceNewSignup = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: user } = await supabaseAdmin.auth.admin.getUserById(context.userId);
+    const created = user?.user?.created_at ? new Date(user.user.created_at).getTime() : 0;
+    if (Date.now() - created > 15 * 60_000) return { ok: true, skipped: true };
+    await alertOwners(supabaseAdmin, "🆕 حساب طالب جديد بانتظار المراجعة", await studentLabel(supabaseAdmin, context.userId));
+    return { ok: true };
   });

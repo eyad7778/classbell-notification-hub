@@ -9,6 +9,7 @@ import { AuthCard } from "@/components/auth-card";
 import { supabase } from "@/integrations/supabase/client";
 import { authErrorAr, isValidEgyptPhone, normalizePhone, phoneToEmail } from "@/lib/auth";
 import { useText } from "@/hooks/use-preferences";
+import { announceNewSignup } from "@/lib/staff.functions";
 import { STUDY_LEVELS } from "@/lib/staff-permissions";
 
 export const Route = createFileRoute("/signup")({
@@ -141,6 +142,7 @@ function Signup() {
       await supabase.storage.from("student-ids").remove([idCardPath]);
       await supabase.from("profiles").update({ id_card_path: null }).eq("id", data.user!.id);
     }
+    await announceNewSignup().catch(() => undefined);
     navigate({ to: "/app" });
     } catch (cause) {
       setError(t(

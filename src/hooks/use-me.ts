@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { withSchemaExtensions } from "@/integrations/supabase/schema-extensions";
 
 export type SubStatus =
   "pending" | "awaiting_payment" | "active" | "expired" | "suspended" | "rejected";
@@ -36,9 +37,9 @@ export function useMe() {
           .select("full_name, phone, level, department_id, student_code, registration_status, id_card_path")
           .eq("id", id)
           .maybeSingle(),
-        supabase
+        withSchemaExtensions(supabase)
           .from("subscriptions")
-          .select("status, end_at, start_at")
+          .select("status, end_at, start_at, plan_id")
           .eq("user_id", id)
           .maybeSingle(),
         supabase
