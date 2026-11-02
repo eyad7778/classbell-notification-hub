@@ -542,7 +542,7 @@ export const retrySubscriptionNotification = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ userId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const admin = await assertStaff(context as Ctx, false, "payments");
-    const { data: subscription, error: subscriptionError } = await admin
+    const { data: subscription, error: subscriptionError } = await withSchemaExtensions(admin)
       .from("subscriptions")
       .select("status, end_at, plan_id")
       .eq("user_id", data.userId)
